@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { analyzeProject } from '../lib/analysis';
+import { commonFolder, filesFromDrop, skippedMessage, sortFiles } from '../lib/audioFiles';
 import { ACCEPTED_AUDIO, addStems, importSong, type ImportProgress } from '../lib/importer';
 import { songNameFromFiles, stemNamesFromFiles } from '../lib/stemNames';
 import type { Project } from '../lib/types';
@@ -7,12 +8,12 @@ import { navigate, patchProject, refreshLibrary, toast } from '../state/actions'
 import { Upload } from './icons';
 import { Button, Modal, Spinner } from './ui';
 
-export function isAudioFile(f: File): boolean {
-  return f.type.startsWith('audio/') || /\.(wav|mp3|m4a|aac|flac|ogg|aiff?)$/i.test(f.name);
-}
+export type OnFiles = (files: File[], folder: string | null) => void;
 
-export function DropZone({ onFiles, compact }: { onFiles: (f: File[]) => void; compact?: boolean }) {
+/** Drop files or whole folders, or pick files / a folder. Passes everything on unfiltered. */
+export function DropZone({ onFiles, compact }: { onFiles: OnFiles; compact?: boolean }) {
   const input = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement | null>(null);
   const [over, setOver] = useState(false);
   return (
     <div
@@ -23,8 +24,9 @@ export function DropZone({ onFiles, compact }: { onFiles: (f: File[]) => void; c
       onDragLeave={() => setOver(false)}
       onDrop={(e) => {
         e.preventDefault();
+        e.stopPropagation(); // the library page also accepts drops
         setOver(false);
-        onFiles(Array.from(e.dataTransfer.files).filter(isAudioFile));
+        void filesFromDrop(e.dataTransfer).then(({ files, folder }) => onFiles(files, folder));
       }}
       onClick={() => input.current?.click()}
       role="button"
@@ -36,7 +38,19 @@ export function DropZone({ onFiles, compact }: { onFiles: (f: File[]) => void; c
     >
       <Upload size={compact ? 22 : 32} className="mb-2 text-gray-400" />
       <div className="font-medium">Drop your stems here</div>
-      <div className="mt-1 text-sm text-gray-400">or tap to choose files (WAV, MP3, M4A, FLAC)</div>
+      <div className="mt-1 text-sm text-gray-400">
+        or tap to choose files (M4A, WAV, MP3, FLAC, AIFF), or{' '}
+        <button
+          type="button"
+          className="underline decoration-dotted underline-offset-2 hover:text-white"
+          onClick={(e) => {
+            e.stopPropagation();
+            folderInput.current?.click();
+          }}
+        >
+          choose a folder
+        </button>
+      </div>
       <input
         ref={input}
         type="file"
@@ -45,7 +59,23 @@ export function DropZone({ onFiles, compact }: { onFiles: (f: File[]) => void; c
         data-testid="file-input"
         className="hidden"
         onChange={(e) => {
-          onFiles(Array.from(e.target.files ?? []));
+          onFiles(Array.from(e.target.files ?? []), null);
+          e.target.value = '';
+        }}
+      />
+      <input
+        ref={(el) => {
+          folderInput.current = el;
+          el?.setAttribute('webkitdirectory', '');
+        }}
+        type="file"
+        multiple
+        data-testid="folder-input"
+        className="hidden"
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          onFiles(files, commonFolder(files));
           e.target.value = '';
         }}
       />
@@ -64,30 +94,37 @@ export function ImportDialog({
   open,
   onClose,
   initialFiles = [],
+  initialFolder = null,
   addTo,
 }: {
   open: boolean;
   onClose: () => void;
   initialFiles?: File[];
+  initialFolder?: string | null;
   addTo?: Project;
 }) {
-  const [files, setFiles] = useState<File[]>(initialFiles);
+  const [files, setFiles] = useState<File[]>([]);
   const [name, setName] = useState('');
+  const [skipped, setSkipped] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
 
   useEffect(() => {
     if (open) {
-      setFiles(initialFiles);
-      setName(songNameFromFiles(initialFiles.map((f) => f.name)));
+      const sorted = sortFiles(initialFiles);
+      setFiles(sorted.audio);
+      setSkipped(skippedMessage(sorted));
+      setName(initialFolder ?? songNameFromFiles(sorted.audio.map((f) => f.name)));
       setProgress(null);
     }
-  }, [open, initialFiles]);
+  }, [open, initialFiles, initialFolder]);
 
-  const addFiles = (more: File[]) => {
-    const next = [...files, ...more.filter((m) => !files.some((f) => f.name === m.name && f.size === m.size))];
+  const addFiles: OnFiles = (more, folder) => {
+    const sorted = sortFiles(more);
+    const next = [...files, ...sorted.audio.filter((m) => !files.some((f) => f.name === m.name && f.size === m.size))];
     setFiles(next);
-    if (!name || name === 'New song') setName(songNameFromFiles(next.map((f) => f.name)));
+    setSkipped(skippedMessage(sorted));
+    if (!name || name === 'New song') setName(folder ?? songNameFromFiles(next.map((f) => f.name)));
   };
 
   const run = async () => {
@@ -129,6 +166,11 @@ export function ImportDialog({
         </label>
       )}
       {!busy && <DropZone onFiles={addFiles} compact />}
+      {skipped && (
+        <p className="mt-2 text-sm text-amber-200/90" data-testid="skipped-note">
+          {skipped}
+        </p>
+      )}
       {files.length > 0 && (
         <ul className="mt-3 max-h-48 overflow-auto rounded-lg bg-black/20 p-2 text-sm">
           {files.map((f, i) => (

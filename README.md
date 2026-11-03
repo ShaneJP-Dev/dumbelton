@@ -17,35 +17,53 @@ to find beats and sections.
 
 ## Run it
 
-You need Node 22 with pnpm, plus either Python 3.11 with [uv](https://docs.astral.sh/uv/) or Docker
-(for the analysis service).
+You need [Node 22](https://nodejs.org) with pnpm (`corepack enable`), and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+uv fetches Python 3.11 and the analysis libraries itself.
+
+```bash
+git clone -b claude/inspiring-planck-o3882y https://github.com/SudoVault-Software/musical-app.git
+```
+
+```bash
+cd musical-app
+```
 
 ```bash
 pnpm install
 ```
 
-Start the analysis service, either with uv:
+```bash
+pnpm start
+```
+
+Then open http://localhost:8000. `pnpm start` builds the app and runs one server for the app and the
+analysis service. The first start takes a few minutes while uv downloads Python and librosa. The first
+song after a restart is analysed about 30 s more slowly while the analyzer warms up.
+
+### Importing stems
+
+Choose the stem files, choose a whole folder, or drag a folder onto the page. M4A, WAV, MP3, FLAC,
+AIFF and OGG all work. Stems exported from Ableton often come with `.asd` files next to them
+(`Drums.m4a.asd`). Those are Ableton's analysis data, not audio, so they are skipped, as are Ableton
+project files and macOS `._` files.
+
+### Working on the code
+
+Run the analysis service and the Vite dev server (with hot reload) separately, then open
+http://localhost:5173:
 
 ```bash
 pnpm analyzer
 ```
 
-or with Docker:
-
-```bash
-docker compose up analyzer
-```
-
-Then start the app and open http://localhost:5173:
-
 ```bash
 pnpm dev
 ```
 
-To run everything as one server on port 8000 (the analyzer also serves the built app):
+Or run the analysis service with Docker instead of uv:
 
 ```bash
-pnpm start
+docker compose up analyzer
 ```
 
 ### Using it from an iPad or another device
@@ -136,7 +154,8 @@ pnpm e2e
 
 runs the end-to-end tests (Playwright, Chromium). They start both servers and drive the app with a
 synthetic song: import, section detection, seek, loop, mute, arrangement export length, a Live
-quantised jump, and working without the analyzer.
+quantised jump, working without the analyzer, and importing a folder of `.m4a` stems with their
+Ableton `.asd` files (that test needs ffmpeg to create the m4a files, and is skipped without it).
 
 The engine benchmark test requires 12 stereo stems at 0.5× speed to render at least 40× faster than
 real time (about 100× on a laptop).

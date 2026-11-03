@@ -4,8 +4,9 @@ POST /api/jobs        multipart field `audio` -> {"id": ...}
 GET  /api/jobs/{id}   -> {"id", "status", "progress", "result"?, "error"?}
 GET  /api/health      -> {"ok": true, "backend": ...}
 
-Set WEB_DIST to the built web app (web/dist) to serve it from the same
-process, so one server on one port runs everything.
+The built web app (web/dist, from `pnpm build`) is served from the same
+process when it exists, so one server on one port runs everything.
+WEB_DIST overrides its location.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import os
 import tempfile
 import threading
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -102,7 +104,17 @@ def get_job(job_id: str) -> dict:
     return job.to_dict()
 
 
-_web_dist = os.environ.get("WEB_DIST")
-if _web_dist and os.path.isdir(_web_dist):
+DEFAULT_WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
+
+
+def resolve_web_dist(env_value: str | None, default: Path = DEFAULT_WEB_DIST) -> Path | None:
+    """The built web app to serve: WEB_DIST if set, else the repo's web/dist. None if missing."""
+    path = Path(env_value) if env_value else default
+    return path if (path / "index.html").is_file() else None
+
+
+_web_dist = resolve_web_dist(os.environ.get("WEB_DIST"))
+if _web_dist is not None:
     # mounted last so /api routes win
     app.mount("/", StaticFiles(directory=_web_dist, html=True), name="web")
+    log.info("serving the web app from %s", _web_dist)

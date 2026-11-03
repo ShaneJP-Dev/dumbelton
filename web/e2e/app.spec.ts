@@ -1,7 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { SONG_DIR } from './global-setup';
+import { existsSync } from 'node:fs';
+import { M4A_DIR, SONG_DIR } from './global-setup';
 
 const STEMS = ['drums', 'bass', 'keys', 'lead', 'click'].map((n) => resolve(SONG_DIR, `${n}.wav`));
 const SR = 48000;
@@ -53,6 +54,8 @@ test.describe.serial('song workflow', () => {
     await expect(page.getByTestId('section')).toHaveCount(truth.sections.length, { timeout: 120_000 });
     const names = await page.getByTestId('section').evaluateAll((els) => els.map((e) => e.getAttribute('data-name')));
     expect(names).toEqual(['Intro', 'Verse 1', 'Chorus 1', 'Verse 2', 'Chorus 2', 'Bridge', 'Chorus 3', 'Outro']);
+    // edits are saved after a short debounce; wait for the stored copy before reading it
+    await expect.poll(async () => (await project(page))?.sections?.length ?? 0).toBe(truth.sections.length);
     const p = await project(page);
     p.sections.forEach((s, i) => expect(Math.abs(s.start / SR - truth.sections[i].start)).toBeLessThan(0.1));
   });
@@ -141,4 +144,32 @@ test('without the analyzer, the song still opens and sections can be marked by h
   await page.waitForTimeout(200);
   await page.getByRole('button', { name: /Split at playhead/ }).click();
   await expect(page.getByTestId('section')).toHaveCount(2);
+});
+
+test('imports m4a stems from a folder, skipping Ableton .asd files', async ({ page }) => {
+  test.skip(!existsSync(resolve(M4A_DIR, 'click.m4a')), 'needs ffmpeg to make the m4a test files');
+  await page.goto('/');
+  await page.getByTestId('new-song').click();
+  await page.getByRole('dialog').getByTestId('folder-input').setInputFiles(M4A_DIR);
+  await expect(page.getByTestId('song-name')).toHaveValue('Folder Song');
+  await expect(page.getByTestId('skipped-note')).toHaveText(
+    'Skipped 5 Ableton .asd files (analysis data, not audio) and 1 other file.',
+  );
+  await expect(page.getByRole('dialog').getByRole('listitem')).toHaveCount(5);
+  await page.getByTestId('import').click();
+  await page.waitForURL(/#\/song\//);
+  await expect(page.getByTestId('track-header')).toHaveCount(5);
+  await expect(page.getByTestId('section')).toHaveCount(8, { timeout: 120_000 });
+});
+
+test('choosing only .asd files explains where the audio is', async ({ page }) => {
+  test.skip(!existsSync(resolve(M4A_DIR, 'click.m4a')), 'needs ffmpeg to make the m4a test files');
+  await page.goto('/');
+  await page.getByTestId('new-song').click();
+  await page
+    .getByRole('dialog')
+    .getByTestId('file-input')
+    .setInputFiles(['drums', 'bass'].map((n) => resolve(M4A_DIR, `${n}.m4a.asd`)));
+  await expect(page.getByTestId('skipped-note')).toContainText('choose the audio files next to them');
+  await expect(page.getByTestId('import')).toBeDisabled();
 });

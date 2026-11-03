@@ -5,7 +5,7 @@
     "dev": "pnpm --filter web dev",
     "analyzer": "uv run --directory analyzer uvicorn app.main:app --host 127.0.0.1 --port 8000",
     "build": "pnpm --filter web build",
-    "start": "pnpm build && WEB_DIST=../web/dist uv run --directory analyzer uvicorn app.main:app --host 0.0.0.0 --port 8000",
+    "start": "pnpm build && uv run --directory analyzer uvicorn app.main:app --host 127.0.0.1 --port 8000",
     "test": "pnpm --filter web test && uv run --directory analyzer pytest -q",
     "e2e": "pnpm --filter web e2e"
   },

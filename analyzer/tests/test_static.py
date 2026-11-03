@@ -19,3 +19,19 @@ def test_serves_web_dist_when_configured(tmp_path, monkeypatch):
         monkeypatch.delenv("WEB_DIST")
         importlib.reload(main)
         os.environ.pop("WEB_DIST", None)
+
+
+def test_resolve_web_dist(tmp_path):
+    from app.main import resolve_web_dist
+
+    built = tmp_path / "dist"
+    built.mkdir()
+    (built / "index.html").write_text("<!doctype html>")
+    missing = tmp_path / "nope"
+    # default location used when WEB_DIST is unset, only if it has been built
+    assert resolve_web_dist(None, built) == built
+    assert resolve_web_dist(None, missing) is None
+    assert resolve_web_dist("", built) == built
+    # WEB_DIST overrides the default
+    assert resolve_web_dist(str(built), missing) == built
+    assert resolve_web_dist(str(missing), built) is None

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { SAMPLE_RATE } from '../audio/core/types';
-import { isAudioFile, DropZone, ImportDialog } from '../components/ImportDialog';
+import { DropZone, ImportDialog } from '../components/ImportDialog';
+import { filesFromDrop } from '../lib/audioFiles';
 import { ListIcon, Plus, Trash } from '../components/icons';
 import { Button, formatTime } from '../components/ui';
 import { KIND_META } from '../lib/sections';
@@ -51,10 +52,10 @@ function SongCard({ p }: { p: Project }) {
 export function LibraryView() {
   const projects = useApp((s) => s.projects);
   const [importOpen, setImportOpen] = useState(false);
-  const [dropped, setDropped] = useState<File[]>([]);
+  const [dropped, setDropped] = useState<{ files: File[]; folder: string | null }>({ files: [], folder: null });
 
-  const startImport = (files: File[]) => {
-    setDropped(files);
+  const startImport = (files: File[], folder: string | null = null) => {
+    setDropped({ files, folder });
     setImportOpen(true);
   };
 
@@ -64,8 +65,7 @@ export function LibraryView() {
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
-        const files = Array.from(e.dataTransfer.files).filter(isAudioFile);
-        if (files.length) startImport(files);
+        void filesFromDrop(e.dataTransfer).then(({ files, folder }) => files.length && startImport(files, folder));
       }}
     >
       <header className="mb-6 flex items-center gap-3">
@@ -94,7 +94,12 @@ export function LibraryView() {
           ))}
         </div>
       )}
-      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} initialFiles={dropped} />
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        initialFiles={dropped.files}
+        initialFolder={dropped.folder}
+      />
     </div>
   );
 }
