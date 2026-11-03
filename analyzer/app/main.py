@@ -3,6 +3,9 @@
 POST /api/jobs        multipart field `audio` -> {"id": ...}
 GET  /api/jobs/{id}   -> {"id", "status", "progress", "result"?, "error"?}
 GET  /api/health      -> {"ok": true, "backend": ...}
+
+Set WEB_DIST to the built web app (web/dist) to serve it from the same
+process, so one server on one port runs everything.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from contextlib import asynccontextmanager
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .jobs import JobManager
 from .pipeline import analyze_file, backend_name, get_backend
@@ -96,3 +100,9 @@ def get_job(job_id: str) -> dict:
     if job is None:
         raise HTTPException(404, "no such job")
     return job.to_dict()
+
+
+_web_dist = os.environ.get("WEB_DIST")
+if _web_dist and os.path.isdir(_web_dist):
+    # mounted last so /api routes win
+    app.mount("/", StaticFiles(directory=_web_dist, html=True), name="web")

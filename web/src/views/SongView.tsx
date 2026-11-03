@@ -154,7 +154,7 @@ export function SongView({ id }: { id: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center gap-2 border-b border-white/10 px-2 py-2 md:px-4">
+      <header className="flex flex-wrap items-center gap-2 border-b border-white/10 px-2 py-2 md:flex-nowrap md:px-4">
         <Button variant="ghost" aria-label="Back to songs" onClick={() => navigate({ name: 'library' })}>
           <Back />
         </Button>
@@ -164,14 +164,14 @@ export function SongView({ id }: { id: string }) {
           onChange={(e) => patchProject((p) => ({ ...p, name: e.target.value }))}
           className="h-10 min-w-0 flex-1 truncate rounded-lg bg-transparent px-2 text-lg font-semibold outline-none hover:bg-white/5 focus:bg-white/10 md:max-w-sm"
         />
-        <nav className="ml-auto flex rounded-xl bg-white/5 p-1" aria-label="Mode">
+        <nav className="order-last flex w-full rounded-xl bg-white/5 p-1 sm:order-none sm:ml-auto sm:w-auto" aria-label="Mode">
           {MODES.map(([m, label]) => (
             <button
               key={m}
               type="button"
               aria-pressed={mode === m}
               onClick={() => changeMode(m)}
-              className={cx('h-9 rounded-lg px-3 text-sm font-medium md:px-4', mode === m ? 'bg-white text-black' : 'text-gray-300 hover:text-white')}
+              className={cx('h-9 flex-1 rounded-lg px-3 text-sm font-medium sm:flex-none md:px-4', mode === m ? 'bg-white text-black' : 'text-gray-300 hover:text-white')}
             >
               {label}
             </button>

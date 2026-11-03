@@ -2,7 +2,7 @@ import { useCallback, useRef, type PointerEvent as RPointerEvent } from 'react';
 import { barLength } from '../audio/core/grid';
 import { SAMPLE_RATE } from '../audio/core/types';
 import { usePlayhead, usePlayheadValue, useWidth } from '../hooks/usePlayhead';
-import { KIND_META, moveBoundary, sectionIndexAt, snapFrame, barsIn } from '../lib/sections';
+import { KIND_META, moveBoundary, sectionIndexAt, snapFrame, barsIn, shortName } from '../lib/sections';
 import type { Project, Stem } from '../lib/types';
 import { patchProject, syncProgram, syncStems } from '../state/actions';
 import { getEngine } from '../state/engine';
@@ -11,6 +11,7 @@ import { cx } from './ui';
 import { Waveform } from './Waveform';
 
 const SECTION_H = 56;
+
 const LANE_H = 64;
 
 export function seekTo(frame: number): void {
@@ -94,7 +95,7 @@ function SectionBar({ project, width }: { project: Project; width: number }) {
             style={{ left: left + 1, width: Math.max(2, w - 2), background: KIND_META[s.kind].color }}
             title={`${s.name}${bars ? ` · ${bars} bars` : ''}`}
           >
-            <div className="truncate text-[13px] font-semibold leading-tight text-white drop-shadow">{s.name}</div>
+            <div className="truncate text-[13px] font-semibold leading-tight text-white drop-shadow">{w < 64 ? shortName(s.name) : s.name}</div>
             {w > 60 && bars > 0 && <div className="text-[11px] text-white/80">{bars} bars</div>}
           </button>
         );
@@ -125,11 +126,13 @@ function TrackHeader({ stem, index }: { stem: Stem; index: number }) {
     syncStems();
   };
   const audible = !stem.muted && (!anySolo || stem.solo);
+  const btn = 'h-7 w-7 rounded-md text-xs font-bold md:h-8 md:w-8';
   return (
     <div className="flex h-full items-center gap-2 border-b border-white/5 pr-2" data-testid="track-header">
       <div className="h-full w-1.5 shrink-0 rounded-r" style={{ background: stem.color, opacity: audible ? 1 : 0.3 }} />
+      <div className="flex min-w-0 flex-1 flex-col gap-1 md:flex-row md:items-center md:gap-2">
       <div className="min-w-0 flex-1">
-        <div className={cx('truncate text-sm font-medium', !audible && 'text-gray-500')}>{stem.name}</div>
+        <div className={cx('truncate text-sm font-medium', !audible && 'text-gray-500')} title={stem.name}>{stem.name}</div>
         <input
           type="range"
           min={0}
@@ -139,15 +142,16 @@ function TrackHeader({ stem, index }: { stem: Stem; index: number }) {
           aria-label={`${stem.name} volume`}
           onChange={(e) => update({ gain: Number(e.target.value) })}
           onDoubleClick={() => update({ gain: 1 })}
-          className="mt-1 h-1 w-full accent-gray-300"
+          className="mt-1 hidden h-1 w-full accent-gray-300 md:block"
         />
       </div>
+      <div className="flex gap-1.5 md:gap-2">
       <button
         type="button"
         aria-pressed={stem.muted}
         aria-label={`Mute ${stem.name}`}
         onClick={() => update({ muted: !stem.muted })}
-        className={cx('h-8 w-8 rounded-md text-xs font-bold', stem.muted ? 'bg-amber-500 text-black' : 'bg-white/10 text-gray-300')}
+        className={cx(btn, stem.muted ? 'bg-amber-500 text-black' : 'bg-white/10 text-gray-300')}
       >
         M
       </button>
@@ -156,10 +160,12 @@ function TrackHeader({ stem, index }: { stem: Stem; index: number }) {
         aria-pressed={stem.solo}
         aria-label={`Solo ${stem.name}`}
         onClick={() => update({ solo: !stem.solo })}
-        className={cx('h-8 w-8 rounded-md text-xs font-bold', stem.solo ? 'bg-green-500 text-black' : 'bg-white/10 text-gray-300')}
+        className={cx(btn, stem.solo ? 'bg-green-500 text-black' : 'bg-white/10 text-gray-300')}
       >
         S
       </button>
+      </div>
+      </div>
     </div>
   );
 }

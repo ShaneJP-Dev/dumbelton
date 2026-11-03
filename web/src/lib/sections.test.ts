@@ -10,6 +10,7 @@ import {
   setKind,
   snapFrame,
   splitAt,
+  shortName,
 } from './sections';
 import type { Section } from './types';
 
@@ -87,5 +88,14 @@ describe('sections', () => {
     secs = renameSection(secs, 0, 'Tag');
     secs = setKind(secs, 1, 'chorus');
     expect(secs.map((s) => s.name)).toEqual(['Tag', 'Chorus']);
+  });
+});
+
+describe('shortName', () => {
+  it('abbreviates section names for narrow blocks', () => {
+    expect(shortName('Verse 1')).toBe('V1');
+    expect(shortName('Chorus')).toBe('C');
+    expect(shortName('Pre-Chorus 2')).toBe('PC2');
+    expect(shortName('Instrumental 3')).toBe('In3');
   });
 });

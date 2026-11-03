@@ -144,3 +144,13 @@ export function barsIn(s: Section, downbeats: Frame[]): number {
   if (downbeats.length === 0) return 0;
   return lowerBound(downbeats, s.end) - lowerBound(downbeats, s.start);
 }
+
+/** "Verse 1" -> "V1", "Pre-Chorus" -> "PC", "Instrumental 2" -> "In2" for narrow blocks. */
+export function shortName(name: string): string {
+  const m = name.match(/^(.*?)(?:\s+(\d+))?$/);
+  const base = (m?.[1] ?? name).trim();
+  const num = m?.[2] ?? '';
+  const parts = base.split(/[\s-]+/).filter(Boolean);
+  const abbr = parts.length > 1 ? parts.map((p) => p[0].toUpperCase()).join('') : base.startsWith('Instr') ? 'In' : base.slice(0, 1).toUpperCase();
+  return abbr + num;
+}
