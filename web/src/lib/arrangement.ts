@@ -41,7 +41,21 @@ export function songProgram(project: Project, loopSectionId: string | null): Pro
   return linearProgram(project.lengthFrames);
 }
 
-export function liveProgram(project: Project): Program {
+/** Live mode plays an arrangement (from a setlist entry) or the song's sections in order. */
+export function liveProgram(project: Project, arrangementId: string | null = null): Program {
+  const arr = arrangementId ? project.arrangements.find((a) => a.id === arrangementId) : undefined;
+  if (arr && playableItems(project, arr).length) return arrangementProgram(project, arr);
   if (project.sections.length === 0) return linearProgram(project.lengthFrames);
   return sectionsProgram(project.sections);
+}
+
+/** One pad per segment of the live program. */
+export function livePads(project: Project, arrangementId: string | null = null) {
+  const arr = arrangementId ? project.arrangements.find((a) => a.id === arrangementId) : undefined;
+  const byId = new Map(project.sections.map((s) => [s.id, s]));
+  if (arr) {
+    const items = playableItems(project, arr);
+    if (items.length) return items.map((it) => ({ key: it.id, section: byId.get(it.sectionId)! }));
+  }
+  return project.sections.map((s) => ({ key: s.id, section: s }));
 }

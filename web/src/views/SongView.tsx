@@ -10,6 +10,7 @@ import { Button, cx } from '../components/ui';
 import { useShortcuts } from '../hooks/useShortcuts';
 import { sectionIndexAt } from '../lib/sections';
 import { deleteProject, navigate, openProject, patchProject, setClick, setMode, syncProgram, togglePlay } from '../state/actions';
+import { exitLive, nextSong, preloadNextSong, restoreLiveState } from '../state/live';
 import { getEngine, peekEngine } from '../state/engine';
 import { getState, setState, useApp, type Mode } from '../state/store';
 
@@ -61,12 +62,23 @@ export function SongView({ id }: { id: string }) {
 
   useEffect(() => {
     let alive = true;
-    void openProject(id).then((p) => alive && setNotFound(!p));
+    const resumeSegment = getState().live ? null : restoreLiveState(id);
+    void openProject(id, { keepMode: resumeSegment !== null }).then(async (p) => {
+      if (!alive) return;
+      setNotFound(!p);
+      if (p && resumeSegment !== null && resumeSegment > 0) (await getEngine()).queueJump(resumeSegment, 'now');
+      if (p && getState().live) void preloadNextSong();
+    });
     return () => {
       alive = false;
       if (!getState().live) peekEngine()?.pause();
     };
   }, [id]);
+
+  const changeMode = (m: Mode) => {
+    if (m !== 'live' && getState().mode === 'live') exitLive();
+    setMode(m);
+  };
 
   const jumpToSection = useCallback((i: number) => {
     const { current, mode: m, quantize } = getState();
@@ -96,7 +108,13 @@ export function SongView({ id }: { id: string }) {
           void togglePlay();
           return true;
         }
-        if (e.shiftKey) return; // Shift+arrows are for setlists (Live)
+        if (e.shiftKey) {
+          // Shift+arrows move through the setlist in Live mode
+          if (getState().live && (e.key === 'ArrowRight' || e.key === 'PageDown')) nextSong(1);
+          else if (getState().live && (e.key === 'ArrowLeft' || e.key === 'PageUp')) nextSong(-1);
+          else return;
+          return true;
+        }
         if (e.key === 'ArrowRight' || e.key === 'PageDown') {
           jumpToSection(currentIndex() + 1);
           return true;
@@ -152,7 +170,7 @@ export function SongView({ id }: { id: string }) {
               key={m}
               type="button"
               aria-pressed={mode === m}
-              onClick={() => setMode(m)}
+              onClick={() => changeMode(m)}
               className={cx('h-9 rounded-lg px-3 text-sm font-medium md:px-4', mode === m ? 'bg-white text-black' : 'text-gray-300 hover:text-white')}
             >
               {label}

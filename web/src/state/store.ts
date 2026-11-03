@@ -34,6 +34,10 @@ export interface AppState {
   transport: Transport;
   /** When playing a setlist in Live mode. */
   live: { setlistId: string; index: number } | null;
+  /** Arrangement used by Live mode (from the setlist entry), or null for the song's own sections. */
+  liveArrangementId: string | null;
+  /** The song reached its end in Live mode (show "next song"). */
+  liveEnded: boolean;
   toast: { text: string; kind: 'info' | 'error' } | null;
   engineError: string | null;
 }
@@ -54,6 +58,8 @@ export const useApp = create<AppState>(() => ({
   arrangementId: null,
   transport: { playing: false, segment: 0, pending: null },
   live: null,
+  liveArrangementId: null,
+  liveEnded: false,
   toast: null,
   engineError: null,
 }));

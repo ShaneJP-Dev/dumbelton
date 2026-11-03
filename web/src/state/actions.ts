@@ -156,7 +156,7 @@ function onSongEnded(): void {
   endedHandler?.();
 }
 
-export async function openProject(id: string): Promise<Project | null> {
+export async function openProject(id: string, opts: { keepMode?: boolean } = {}): Promise<Project | null> {
   await flushSaves();
   const p = getState().projects.find((x) => x.id === id) ?? (await db.projects.get(id)) ?? null;
   if (!p) return null;
@@ -166,11 +166,15 @@ export async function openProject(id: string): Promise<Project | null> {
       current: p,
       selected: null,
       loop: false,
+      liveEnded: false,
       arrangementId: p.arrangements[0]?.id ?? null,
+      transport: { playing: false, segment: 0, pending: null },
+      // a different song opens in Practice, unless a setlist / resumed live session is running
+      ...(opts.keepMode || getState().live ? {} : { mode: 'practice' as const }),
     });
   }
   try {
-    const engine = await activateProject(p);
+    const engine = await activateProject(p, getState().live !== null);
     setState({ engineError: null });
     watchEngine();
     engine.setClick({ enabled: getState().click });
@@ -191,7 +195,7 @@ export function currentProgram(): Program | null {
     if (arr && arr.items.length) return arrangementProgram(current, arr);
     return songProgram(current, null);
   }
-  if (mode === 'live') return liveProgram(current);
+  if (mode === 'live') return liveProgram(current, getState().liveArrangementId);
   return songProgram(current, loop ? selected : null);
 }
 

@@ -2,6 +2,8 @@ import { AudioEngine } from '../audio/engine/AudioEngine';
 import { loadWireSong } from '../audio/import/pcmStore';
 import type { Grid } from '../audio/core/types';
 import type { Project } from '../lib/types';
+import { memoryBudgetBytes, projectBytes } from '../audio/live/budget';
+import { getState } from './store';
 
 let enginePromise: Promise<AudioEngine> | null = null;
 let engineInstance: AudioEngine | null = null;
@@ -41,16 +43,28 @@ const loading = new Map<string, Promise<void>>();
  * Make `project` the active song (slot 0 by default). If the other slot already
  * holds it (preloaded in Live), switch to that slot instead of reading it again.
  */
-export async function activateProject(project: Project, preferSlot: 0 | 1 = 0): Promise<AudioEngine> {
+export async function activateProject(project: Project, keepOther = false): Promise<AudioEngine> {
   const engine = await getEngine();
   const have = engine.slots.indexOf(project.id);
+  let slot: 0 | 1;
   if (have >= 0) {
-    if (engine.activeSlot !== have) engine.activate(have as 0 | 1);
+    slot = have as 0 | 1;
   } else {
-    await preloadProject(project, preferSlot);
-    engine.activate(preferSlot);
+    // load into the slot that is not playing, so the current song keeps going until the switch
+    slot = engine.activeSlot === 0 ? 1 : 0;
+    if (engine.slots[slot]) engine.unload(slot);
+    const activeId = engine.activeSongId;
+    const active = activeId ? getState().projects.find((p) => p.id === activeId) : undefined;
+    if (active && projectBytes(active) + projectBytes(project) > memoryBudgetBytes()) {
+      // both would not fit: free the current song first
+      engine.unload(engine.activeSlot as 0 | 1);
+    }
+    await preloadProject(project, slot);
   }
+  if (engine.activeSlot !== slot || engine.activeSongId !== project.id) engine.activate(slot);
   applyStemParams(engine, project);
+  const other = slot === 0 ? 1 : 0;
+  if (!keepOther && engine.slots[other]) engine.unload(other);
   return engine;
 }
 
