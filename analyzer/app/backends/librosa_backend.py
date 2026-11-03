@@ -216,6 +216,57 @@ def _runs(bars: list[tuple[int, int, int]], min_bars: int = 2) -> list[list[int]
     return runs
 
 
+def _bar_features(feats: list[np.ndarray], bars: list[tuple[int, int, int]]) -> np.ndarray:
+    """Mean of beat-level features per bar, each dimension z-scored over the song."""
+    F = np.concatenate(feats, axis=0)
+    cols = [F[:, a:b].mean(axis=1) for a, b, _c in bars]
+    B = np.stack(cols, axis=1)
+    mu = B.mean(axis=1, keepdims=True)
+    sd = B.std(axis=1, keepdims=True) + 1e-6
+    return (B - mu) / sd
+
+
+def _novelty(B: np.ndarray, width: int = 4) -> np.ndarray:
+    """nov[k] = distance between the `width` bars before boundary k and the `width` bars after it."""
+    n = B.shape[1]
+    nov = np.zeros(n + 1)
+    for k in range(1, n):
+        left = B[:, max(0, k - width) : k].mean(axis=1)
+        right = B[:, k : min(n, k + width)].mean(axis=1)
+        nov[k] = float(np.linalg.norm(left - right))
+    return nov
+
+
+def _refine_runs(runs: list[list[int]], bars: list[tuple[int, int, int]], B: np.ndarray, radius: int = 2) -> list[list[int]]:
+    """Move each run boundary (by up to `radius` bars) to where the music changes most.
+
+    Spectral clustering is smoothed over a few beats, so a boundary can come out a
+    bar early or late. The bar-level novelty peak is a sharper estimate.
+    """
+    if len(runs) < 2:
+        return runs
+    starts = [a for a, _b, _c in bars]
+    bar_of = {a: i for i, a in enumerate(starts)}
+    nov = _novelty(B)
+    out = [list(r) for r in runs]
+    for i in range(1, len(out)):
+        k = bar_of.get(out[i][0])
+        if k is None:
+            continue
+        lo_bar = bar_of.get(out[i - 1][0], 0) + 2
+        hi_bar = (bar_of.get(out[i][1], len(starts)) if out[i][1] in bar_of else len(starts)) - 2
+        cands = [c for c in range(k - radius, k + radius + 1) if lo_bar <= c <= hi_bar and 0 < c < len(starts)]
+        if not cands:
+            continue
+        best = max(cands, key=lambda c: (nov[c], -abs(c - k)))
+        if best != k and nov[best] > 1.15 * nov[k]:
+            delta = best - k
+            out[i - 1][1] = out[i][0] = starts[best]
+            out[i - 1][3] += delta
+            out[i][3] -= delta
+    return out
+
+
 def label_segments(clusters: list[int], energies: list[float], durations: list[float]) -> list[str]:
     """Turn a cluster-id sequence into musical labels."""
     n = len(clusters)
@@ -285,7 +336,14 @@ def analyze(path: str) -> RawAnalysis:
     downbeat_times = beat_times[phase::BEATS_PER_BAR]
 
     beat_labels = _cluster_beats(y, frames)
-    runs = _merge_alternating(_runs(_bars_from_beats(beat_labels, phase)))
+    bars = _bars_from_beats(beat_labels, phase)
+    runs = _merge_alternating(_runs(bars))
+
+    mfcc_b = _per_interval(librosa.feature.mfcc(y=y, sr=SR, hop_length=HOP, n_mfcc=20), frames, agg=np.mean)
+    rms_b = _per_interval(librosa.feature.rms(y=y, hop_length=HOP), frames, agg=np.mean)
+    # timbre + loudness only: chords also change inside sections, instrumentation mostly does not
+    B = _bar_features([mfcc_b, np.repeat(np.log(rms_b + 1e-4), 4, axis=0)], bars)
+    runs = _refine_runs(runs, bars, B)
 
     rms = librosa.feature.rms(y=y, hop_length=HOP)[0]
     bt = beat_times + [duration]

@@ -39,9 +39,14 @@ def test_empty_upload_rejected():
         assert r.status_code == 400
 
 
-def test_synthetic_song_structure(synthetic_song, truth):
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("mix", ["reference", "browser"])
+def test_synthetic_song_structure(mix, synthetic_song, browser_mix, truth):
+    path = synthetic_song / "mix.wav" if mix == "reference" else browser_mix
     with TestClient(app) as client:
-        job = _run_job(client, synthetic_song / "mix.wav")
+        job = _run_job(client, path)
     assert job["status"] == "done", job.get("error")
     res = job["result"]
     assert abs(res["bpm"] - truth["bpm"]) < 1.0
@@ -49,7 +54,8 @@ def test_synthetic_song_structure(synthetic_song, truth):
     want = truth["sections"]
     assert [s["label"] for s in got] == [s["kind"] for s in want]
     for g, w in zip(got, want):
-        assert abs(g["start"] - w["start"]) <= truth["bar"], (g, w)
+        # within a quarter of a bar: boundaries must land on the right downbeat
+        assert abs(g["start"] - w["start"]) <= truth["bar"] / 4, (g, w)
     assert [s["name"] for s in got][:3] == ["Intro", "Verse 1", "Chorus 1"]
     # boundaries sit exactly on reported downbeats
     for s in got[1:]:
