@@ -1,7 +1,9 @@
 import { lowerBound } from '../audio/core/grid';
 import { SAMPLE_RATE } from '../audio/core/types';
 import { usePlayheadValue } from '../hooks/usePlayhead';
+import { displayFrame, type Layout } from '../lib/layout';
 import type { Project } from '../lib/types';
+import { peekEngine } from '../state/engine';
 import { setClick, setSpeed, syncProgram, togglePlay } from '../state/actions';
 import { setState, useApp } from '../state/store';
 import { Loop, Metronome, Pause, Play } from './icons';
@@ -18,21 +20,29 @@ function barBeat(project: Project, f: number): string {
   return `Bar ${bar}.${Math.max(1, beatInBar)}`;
 }
 
-function Position({ project }: { project: Project }) {
+function Position({ project, layout }: { project: Project; layout?: Layout }) {
   const text = usePlayheadValue((f) => {
+    if (layout?.arranged) {
+      // arrangement time, and which section of the arrangement is playing
+      const seg = peekEngine()?.clock.report?.segment ?? 0;
+      const name = layout.clips[seg]?.section?.name;
+      const t = formatTime(displayFrame(layout, f, seg) / SAMPLE_RATE);
+      return name ? `${name} · ${t}` : t;
+    }
     const t = formatTime(f / SAMPLE_RATE);
     const bb = barBeat(project, f);
     return bb ? `${bb} · ${t}` : t;
   }, '0:00');
+  const total = layout?.arranged ? layout.length : project.lengthFrames;
   return (
     <div className="min-w-0 tabular-nums" data-testid="position">
       <div className="truncate text-sm font-medium">{text}</div>
-      <div className="text-xs text-gray-500">{formatTime(project.lengthFrames / SAMPLE_RATE)}</div>
+      <div className="text-xs text-gray-500">{formatTime(total / SAMPLE_RATE)}</div>
     </div>
   );
 }
 
-export function Transport({ project }: { project: Project }) {
+export function Transport({ project, layout }: { project: Project; layout?: Layout }) {
   const playing = useApp((s) => s.transport.playing);
   const mode = useApp((s) => s.mode);
   const speed = useApp((s) => s.speed);
@@ -53,7 +63,7 @@ export function Transport({ project }: { project: Project }) {
       >
         {playing ? <Pause size={22} /> : <Play size={22} />}
       </button>
-      <Position project={project} />
+      <Position project={project} layout={layout} />
       <div className="mx-1 hidden h-8 w-px bg-white/10 sm:block" />
       {bpm !== null && (
         <div className="text-sm tabular-nums text-gray-300" title="Tempo at the current speed">

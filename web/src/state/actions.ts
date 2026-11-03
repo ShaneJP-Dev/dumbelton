@@ -161,6 +161,7 @@ export async function openProject(id: string, opts: { keepMode?: boolean } = {})
   const p = getState().projects.find((x) => x.id === id) ?? (await db.projects.get(id)) ?? null;
   if (!p) return null;
   const prev = getState().current;
+  const keepFlag = getState().keepModeOnOpen;
   if (prev?.id !== id) {
     setState({
       current: p,
@@ -170,9 +171,10 @@ export async function openProject(id: string, opts: { keepMode?: boolean } = {})
       arrangementId: p.arrangements[0]?.id ?? null,
       transport: { playing: false, segment: 0, pending: null },
       // a different song opens in Practice, unless a setlist / resumed live session is running
-      ...(opts.keepMode || getState().live ? {} : { mode: 'practice' as const }),
+      ...(opts.keepMode || getState().live || keepFlag ? {} : { mode: 'practice' as const }),
     });
   }
+  if (keepFlag) setState({ keepModeOnOpen: false });
   try {
     const engine = await activateProject(p, getState().live !== null);
     setState({ engineError: null });

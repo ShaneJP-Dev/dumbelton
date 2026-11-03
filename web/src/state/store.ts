@@ -38,6 +38,8 @@ export interface AppState {
   liveArrangementId: string | null;
   /** The song reached its end in Live mode (show "next song"). */
   liveEnded: boolean;
+  /** Open the next song in the current mode instead of Practice (Live song list). */
+  keepModeOnOpen: boolean;
   toast: { text: string; kind: 'info' | 'error' } | null;
   engineError: string | null;
 }
@@ -60,6 +62,7 @@ export const useApp = create<AppState>(() => ({
   live: null,
   liveArrangementId: null,
   liveEnded: false,
+  keepModeOnOpen: false,
   toast: null,
   engineError: null,
 }));

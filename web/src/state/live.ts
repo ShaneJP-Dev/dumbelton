@@ -81,6 +81,14 @@ export async function goToSetlistIndex(setlistId: string, index: number): Promis
   navigate({ name: 'song', id: entry.projectId });
 }
 
+/** Open any song in Live mode (from the Live song list's "All songs" view). */
+export async function goToSongLive(projectId: string): Promise<void> {
+  if (getState().current?.id === projectId && !getState().live) return;
+  (await getEngine()).pause();
+  setState({ live: null, liveArrangementId: null, liveEnded: false, mode: 'live', keepModeOnOpen: true });
+  navigate({ name: 'song', id: projectId });
+}
+
 export function nextSong(delta = 1): void {
   const { live } = getState();
   if (live) void goToSetlistIndex(live.setlistId, live.index + delta);

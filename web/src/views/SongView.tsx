@@ -8,6 +8,7 @@ import { seekTo, Timeline } from '../components/Timeline';
 import { Transport } from '../components/Transport';
 import { Button, cx } from '../components/ui';
 import { useShortcuts } from '../hooks/useShortcuts';
+import { arrangementLayout } from '../lib/layout';
 import { sectionIndexAt } from '../lib/sections';
 import { deleteProject, navigate, openProject, patchProject, setClick, setMode, syncProgram, togglePlay } from '../state/actions';
 import { exitLive, nextSong, preloadNextSong, restoreLiveState } from '../state/live';
@@ -57,6 +58,8 @@ export function SongView({ id }: { id: string }) {
   const project = useApp((s) => s.current);
   const mode = useApp((s) => s.mode);
   const engineError = useApp((s) => s.engineError);
+  const arrangementId = useApp((s) => s.arrangementId);
+  const arrangement = mode === 'arrange' ? project?.arrangements.find((a) => a.id === arrangementId) : undefined;
   const [addOpen, setAddOpen] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
@@ -151,6 +154,7 @@ export function SongView({ id }: { id: string }) {
     );
   }
   if (!project || project.id !== id) return <div className="p-8 text-gray-400">Loading…</div>;
+  const layout = arrangement ? arrangementLayout(project, arrangement) : undefined;
 
   return (
     <div className="flex h-full flex-col">
@@ -189,11 +193,11 @@ export function SongView({ id }: { id: string }) {
           <>
             {mode === 'practice' && <SectionEditor project={project} />}
             {mode === 'arrange' && <ArrangePanel project={project} />}
-            <Timeline project={project} />
+            <Timeline project={project} layout={layout} />
           </>
         )}
       </main>
-      <Transport project={project} />
+      <Transport project={project} layout={layout} />
       <ImportDialog open={addOpen} onClose={() => setAddOpen(false)} addTo={project} />
     </div>
   );

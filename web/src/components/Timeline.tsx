@@ -3,9 +3,10 @@ import { barLength } from '../audio/core/grid';
 import { SAMPLE_RATE } from '../audio/core/types';
 import { usePlayhead, usePlayheadValue, useWidth } from '../hooks/usePlayhead';
 import { KIND_META, moveBoundary, sectionIndexAt, snapFrame, barsIn, shortName } from '../lib/sections';
+import { displayFrame, songLayout, sourceAt, type Layout } from '../lib/layout';
 import type { Project, Stem } from '../lib/types';
 import { patchProject, syncProgram, syncStems } from '../state/actions';
-import { getEngine } from '../state/engine';
+import { getEngine, peekEngine } from '../state/engine';
 import { getState, setState, useApp } from '../state/store';
 import { cx } from './ui';
 import { VolumeFader } from './VolumeFader';
@@ -120,6 +121,42 @@ function SectionBar({ project, width }: { project: Project; width: number }) {
   );
 }
 
+/** The arrangement's sections in play order (not editable here: reorder them in the strip above). */
+function ClipBar({ project, layout, width }: { project: Project; layout: Layout; width: number }) {
+  const playing = useApp((s) => s.transport.segment);
+  if (layout.clips.length === 0) {
+    return <div className="flex h-full items-center rounded-lg bg-white/5 px-3 text-sm text-gray-400">This arrangement is empty.</div>;
+  }
+  return (
+    <div className="relative h-full" data-testid="clip-bar">
+      {layout.clips.map((c, i) => {
+        const s = c.section!;
+        const left = (c.offset / layout.length) * width;
+        const w = ((c.end - c.start) / layout.length) * width;
+        const bars = barsIn(s, project.downbeats);
+        return (
+          <button
+            key={c.key}
+            type="button"
+            data-testid="clip"
+            data-name={s.name}
+            onClick={() => void getEngine().then((e) => e.seek(c.start, i))}
+            className={cx(
+              'absolute top-0 bottom-0 overflow-hidden rounded-md px-2 text-left',
+              i === playing ? 'brightness-125 ring-2 ring-white/70' : 'brightness-90 hover:brightness-110',
+            )}
+            style={{ left: left + 1, width: Math.max(2, w - 2), background: KIND_META[s.kind].color }}
+            title={`${s.name}${bars ? ` · ${bars} bars` : ''}`}
+          >
+            <div className="truncate text-[13px] font-semibold leading-tight text-white drop-shadow">{w < 64 ? shortName(s.name) : s.name}</div>
+            {w > 60 && bars > 0 && <div className="text-[11px] text-white/80">{bars} bars</div>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function TrackHeader({ stem, index }: { stem: Stem; index: number }) {
   const anySolo = useApp((s) => s.current?.stems.some((x) => x.solo) ?? false);
   const update = (patch: Partial<Stem>) => {
@@ -161,31 +198,50 @@ function TrackHeader({ stem, index }: { stem: Stem; index: number }) {
   );
 }
 
-export function Timeline({ project, showTracks = true }: { project: Project; showTracks?: boolean }) {
+/**
+ * Track lanes under a section bar. With no layout it shows the song as recorded
+ * (sections editable); with an arrangement layout it shows the arrangement end
+ * to end, so removed sections disappear and repeats appear twice.
+ */
+export function Timeline({ project, layout: given, showTracks = true }: { project: Project; layout?: Layout; showTracks?: boolean }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const playheadRef = useRef<HTMLDivElement>(null);
-  const len = project.lengthFrames;
+  const layout = given ?? songLayout(project);
+  const len = Math.max(1, layout.length);
   const anySolo = project.stems.some((s) => s.solo);
 
   usePlayhead((f) => {
     const el = playheadRef.current;
-    if (el && width > 0) el.style.transform = `translateX(${Math.max(0, Math.min(width, (f / len) * width))}px)`;
+    if (!el || width <= 0) return;
+    const seg = peekEngine()?.clock.report?.segment ?? 0;
+    const d = displayFrame(layout, f, seg);
+    el.style.transform = `translateX(${Math.max(0, Math.min(width, (d / len) * width))}px)`;
   });
 
   const onSeek = useCallback(
     (e: RPointerEvent<HTMLDivElement>) => {
       const rect = e.currentTarget.getBoundingClientRect();
-      const f = ((e.clientX - rect.left) / rect.width) * len;
-      seekTo(Math.max(0, Math.min(len - 1, f)));
+      const d = ((e.clientX - rect.left) / rect.width) * len;
+      if (!layout.arranged) {
+        seekTo(Math.max(0, Math.min(len - 1, d)));
+        return;
+      }
+      const at = sourceAt(layout, d);
+      if (at) void getEngine().then((eng) => eng.seek(at.frame, at.index));
     },
-    [len],
+    [len, layout],
   );
+
+  // shading: the song's sections, or one block per arranged clip
+  const shading = layout.arranged
+    ? layout.clips.map((c) => ({ key: c.key, left: c.offset, span: c.end - c.start, kind: c.section!.kind }))
+    : project.sections.map((s) => ({ key: s.id, left: s.start, span: s.end - s.start, kind: s.kind }));
 
   return (
     <div className="flex select-none">
       <div className="w-[148px] shrink-0 md:w-[232px]">
         <div style={{ height: SECTION_H }} className="flex items-end pb-1 text-[11px] uppercase tracking-wide text-gray-500">
-          Sections
+          {layout.arranged ? 'Arrangement' : 'Sections'}
         </div>
         {showTracks &&
           project.stems.map((s, i) => (
@@ -196,36 +252,35 @@ export function Timeline({ project, showTracks = true }: { project: Project; sho
       </div>
       <div ref={ref} className="relative min-w-0 flex-1">
         <div style={{ height: SECTION_H }} className="py-1">
-          {width > 0 && <SectionBar project={project} width={width} />}
+          {width > 0 &&
+            (layout.arranged ? <ClipBar project={project} layout={layout} width={width} /> : <SectionBar project={project} width={width} />)}
         </div>
         {showTracks && (
           <div className="relative cursor-text" onPointerDown={onSeek} data-testid="lanes">
-            {/* faint section shading behind the waveforms */}
-            {project.sections.map((s) => (
+            {shading.map((b) => (
               <div
-                key={s.id}
+                key={b.key}
                 className="pointer-events-none absolute top-0 bottom-0 border-l border-white/10"
-                style={{
-                  left: (s.start / len) * width,
-                  width: ((s.end - s.start) / len) * width,
-                  background: `${KIND_META[s.kind].color}14`,
-                }}
+                style={{ left: (b.left / len) * width, width: (b.span / len) * width, background: `${KIND_META[b.kind].color}14` }}
               />
             ))}
-            {project.stems.map((s) => (
-              <div key={s.id} style={{ height: LANE_H }} className="relative border-b border-white/5">
-                {width > 0 && (
-                  <Waveform
-                    stemId={s.id}
-                    length={len}
-                    color={s.color}
-                    dim={s.muted || s.gain === 0 || (anySolo && !s.solo)}
-                    width={width}
-                    height={LANE_H}
-                  />
-                )}
-              </div>
-            ))}
+            {project.stems.map((s) => {
+              const dim = s.muted || s.gain === 0 || (anySolo && !s.solo);
+              return (
+                <div key={s.id} style={{ height: LANE_H }} className="relative border-b border-white/5">
+                  {width > 0 &&
+                    layout.clips.map((c) => {
+                      const left = Math.round((c.offset / len) * width);
+                      const right = Math.round(((c.offset + c.end - c.start) / len) * width);
+                      return (
+                        <div key={c.key} className="absolute top-0" style={{ left, width: right - left }}>
+                          <Waveform stemId={s.id} from={c.start} to={c.end} color={s.color} dim={dim} width={right - left} height={LANE_H} />
+                        </div>
+                      );
+                    })}
+                </div>
+              );
+            })}
           </div>
         )}
         <div

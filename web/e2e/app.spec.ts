@@ -138,6 +138,9 @@ test.describe.serial('song workflow', () => {
     await page.getByRole('button', { name: 'Clear' }).click();
     for (const n of ['Chorus 1', 'Verse 1', 'Chorus 1']) await page.locator(`[data-testid=palette-chip][data-name="${n}"]`).click();
     await expect(page.getByTestId('arr-item')).toHaveCount(3);
+    // the tracks show the arrangement itself, in its order
+    const clipNames = () => page.getByTestId('clip').evaluateAll((els) => els.map((e) => e.getAttribute('data-name')));
+    await expect.poll(clipNames).toEqual(['Chorus 1', 'Verse 1', 'Chorus 1']);
     const p = await project(page);
     const len = (n: string) => {
       const s = p.sections.find((x) => x.name === n)!;
@@ -157,6 +160,9 @@ test.describe.serial('song workflow', () => {
     const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('save-file').click()]);
     expect(download.suggestedFilename()).toBe('E2E Song - My arrangement.wav');
     await page.getByRole('button', { name: 'Done' }).click();
+    // removing a section from the arrangement takes it off the tracks too
+    await page.getByRole('button', { name: 'Remove Verse 1', exact: true }).click();
+    await expect.poll(clipNames).toEqual(['Chorus 1', 'Chorus 1']);
   });
 
   test('live: a queued section starts exactly at the end of the current one', async () => {
@@ -175,6 +181,33 @@ test.describe.serial('song workflow', () => {
     const r = await report(page);
     expect(r.frame).toBeGreaterThanOrEqual(p.sections[bridgeIndex].start);
     await page.getByTestId('play').click();
+  });
+
+  test('the live screen lists every song and setlist', async () => {
+    await importSong(page, 'Second Song');
+    await expect(page.getByTestId('section').first()).toBeVisible({ timeout: 120_000 });
+    await page.goto('/#/setlists');
+    await page.getByTestId('new-setlist').click();
+    await page.getByTestId('add-song').selectOption({ label: 'E2E Song' });
+    await page.getByTestId('add-song').selectOption({ label: 'Second Song' });
+    await expect(page.getByTestId('setlist-entry')).toHaveCount(2);
+    // open a song in Live from the library: all songs are listed, the open one marked
+    await page.goto('/');
+    await page.getByTestId('song-card').filter({ hasText: 'E2E Song' }).click();
+    await page.getByRole('button', { name: 'Live', exact: true }).click();
+    const list = page.getByTestId('live-song-list');
+    await expect(list.getByTestId('live-song')).toHaveCount(2);
+    await expect(list.locator('[data-testid=live-song][data-name="E2E Song"]')).toContainText('Now');
+    // tapping another song switches to it and stays in Live
+    await list.locator('[data-testid=live-song][data-name="Second Song"]').click();
+    await expect(page.locator('input[aria-label="Song name"]')).toHaveValue('Second Song');
+    await expect(page.getByTestId('live-panel')).toBeVisible();
+    // pick the setlist and start it from its first song
+    await list.getByTestId('song-list-picker').selectOption({ label: 'Setlist 1 (2)' });
+    await list.locator('[data-testid=live-song][data-name="E2E Song"]').click();
+    await expect(page.locator('input[aria-label="Song name"]')).toHaveValue('E2E Song');
+    await expect(list.getByTestId('next-song')).toHaveText(/Next: Second Song/);
+    await expect(list.locator('[data-testid=live-song][data-name="E2E Song"]')).toContainText('Now');
   });
 });
 
