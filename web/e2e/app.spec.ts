@@ -18,7 +18,7 @@ const report = (page: Page) =>
 async function project(page: Page) {
   return page.evaluate(
     () =>
-      new Promise<{ sections: { name: string; start: number; end: number }[]; stems: { name: string; muted: boolean }[] }>((res) => {
+      new Promise<{ sections: { name: string; start: number; end: number }[]; stems: { name: string; muted: boolean; gain: number }[] }>((res) => {
         const req = indexedDB.open('musical');
         req.onsuccess = () => {
           req.result.transaction('projects').objectStore('projects').getAll().onsuccess = (e) =>
@@ -85,6 +85,51 @@ test.describe.serial('song workflow', () => {
     await page.getByRole('button', { name: 'Mute click' }).click();
     await expect(page.getByRole('button', { name: 'Mute click' })).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(async () => (await project(page)).stems.find((s) => s.name === 'click')?.muted).toBe(true);
+  });
+
+  test('a track volume in dB changes the audible level by that amount', async () => {
+    const outputDb = (ms = 700) =>
+      page.evaluate(async (ms) => {
+        const w = window as unknown as { __engine: { ctx: AudioContext; node: AudioNode }; __an?: AnalyserNode };
+        if (!w.__an) {
+          w.__an = w.__engine.ctx.createAnalyser();
+          w.__an.fftSize = 2048;
+          w.__engine.node.connect(w.__an);
+        }
+        const a = w.__an;
+        const buf = new Float32Array(a.fftSize);
+        let sum = 0;
+        let n = 0;
+        const t0 = performance.now();
+        while (performance.now() - t0 < ms) {
+          a.getFloatTimeDomainData(buf);
+          for (const v of buf) sum += v * v;
+          n += buf.length;
+          await new Promise((r) => setTimeout(r, 40));
+        }
+        return 10 * Math.log10(sum / n + 1e-20);
+      }, ms);
+    const keys = page.getByTestId('track-header').filter({ hasText: 'keys' });
+    await page.getByRole('button', { name: 'Solo keys' }).click();
+    await page.locator('[data-testid=section][data-name="Verse 1"]').click();
+    await page.getByTestId('play').click();
+    await page.waitForTimeout(300);
+    const before = await outputDb();
+    await expect(keys.getByTestId('db-readout')).toHaveText('0.0 dB');
+    await keys.getByTestId('db-readout').click();
+    await keys.getByTestId('db-input').fill('-12');
+    await keys.getByTestId('db-input').press('Enter');
+    await expect(keys.getByTestId('db-readout')).toHaveText('\u221212.0 dB');
+    await page.waitForTimeout(200);
+    const after = await outputDb();
+    expect(after - before).toBeGreaterThan(-13.5);
+    expect(after - before).toBeLessThan(-10.5);
+    await expect.poll(async () => (await project(page)).stems.find((s) => s.name === 'keys')?.gain).toBeCloseTo(0.2512, 3);
+    // double-click the fader: back to 0 dB
+    await page.getByLabel('keys volume', { exact: true }).dblclick();
+    await expect(keys.getByTestId('db-readout')).toHaveText('0.0 dB');
+    await page.getByTestId('play').click();
+    await page.getByRole('button', { name: 'Solo keys' }).click();
   });
 
   test('an arrangement exports with the right length', async () => {

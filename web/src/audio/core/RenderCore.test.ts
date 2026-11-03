@@ -266,3 +266,23 @@ describe('RenderCore', () => {
     expect(decode(stems[0][0])).toBe(2000);
   });
 });
+
+describe('stem volume', () => {
+  it('applies a dB gain exactly once the ramp settles', async () => {
+    const { dbToGain } = await import('./decibels');
+    const core = new RenderCore();
+    const len = 48000;
+    core.setSong({ id: 's', length: len, stems: [stemFromFloat('dc', [new Float32Array(len).fill(0.5)], { silenceThreshold: 0 })] });
+    core.play();
+    const main = [new Float32Array(128), new Float32Array(128)];
+    for (let i = 0; i < 4; i++) core.render(main, 128);
+    const dc = main[0][64];
+    core.setStem(0, { gain: dbToGain(-6) });
+    for (let i = 0; i < 4; i++) core.render(main, 128); // 5 ms ramp
+    expect(main[0][100] / dc).toBeCloseTo(dbToGain(-6), 6);
+    expect(main[0][127]).toBe(main[0][0]); // settled: constant
+    core.setStem(0, { gain: 0 });
+    for (let i = 0; i < 4; i++) core.render(main, 128);
+    expect(main[0][127]).toBe(0);
+  });
+});

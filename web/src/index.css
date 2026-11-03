@@ -16,3 +16,47 @@ body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
 }
+
+/* Volume fader (range input) */
+.fader {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 24px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+}
+.fader::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, #9ca3af var(--fill, 80%), rgba(255, 255, 255, 0.12) var(--fill, 80%));
+}
+.fader::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, #9ca3af var(--fill, 80%), rgba(255, 255, 255, 0.12) var(--fill, 80%));
+}
+.fader::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #f3f4f6;
+  border: 2px solid #0b0d12;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+.fader::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f3f4f6;
+  border: 2px solid #0b0d12;
+}
+.fader:focus-visible {
+  outline: none;
+}
+.fader:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px #3b82f6;
+}

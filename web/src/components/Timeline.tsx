@@ -8,6 +8,7 @@ import { patchProject, syncProgram, syncStems } from '../state/actions';
 import { getEngine } from '../state/engine';
 import { getState, setState, useApp } from '../state/store';
 import { cx } from './ui';
+import { VolumeFader } from './VolumeFader';
 import { Waveform } from './Waveform';
 
 const SECTION_H = 56;
@@ -126,45 +127,35 @@ function TrackHeader({ stem, index }: { stem: Stem; index: number }) {
     syncStems();
   };
   const audible = !stem.muted && (!anySolo || stem.solo);
-  const btn = 'h-7 w-7 rounded-md text-xs font-bold md:h-8 md:w-8';
+  const btn = 'h-7 w-7 shrink-0 rounded-md text-xs font-bold';
   return (
     <div className="flex h-full items-center gap-2 border-b border-white/5 pr-2" data-testid="track-header">
       <div className="h-full w-1.5 shrink-0 rounded-r" style={{ background: stem.color, opacity: audible ? 1 : 0.3 }} />
-      <div className="flex min-w-0 flex-1 flex-col gap-1 md:flex-row md:items-center md:gap-2">
-      <div className="min-w-0 flex-1">
-        <div className={cx('truncate text-sm font-medium', !audible && 'text-gray-500')} title={stem.name}>{stem.name}</div>
-        <input
-          type="range"
-          min={0}
-          max={1.5}
-          step={0.01}
-          value={stem.gain}
-          aria-label={`${stem.name} volume`}
-          onChange={(e) => update({ gain: Number(e.target.value) })}
-          onDoubleClick={() => update({ gain: 1 })}
-          className="mt-1 hidden h-1 w-full accent-gray-300 md:block"
-        />
-      </div>
-      <div className="flex gap-1.5 md:gap-2">
-      <button
-        type="button"
-        aria-pressed={stem.muted}
-        aria-label={`Mute ${stem.name}`}
-        onClick={() => update({ muted: !stem.muted })}
-        className={cx(btn, stem.muted ? 'bg-amber-500 text-black' : 'bg-white/10 text-gray-300')}
-      >
-        M
-      </button>
-      <button
-        type="button"
-        aria-pressed={stem.solo}
-        aria-label={`Solo ${stem.name}`}
-        onClick={() => update({ solo: !stem.solo })}
-        className={cx(btn, stem.solo ? 'bg-green-500 text-black' : 'bg-white/10 text-gray-300')}
-      >
-        S
-      </button>
-      </div>
+      <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+        <div className="flex items-center gap-1.5">
+          <div className={cx('min-w-0 flex-1 truncate text-sm font-medium', !audible && 'text-gray-500')} title={stem.name}>
+            {stem.name}
+          </div>
+          <button
+            type="button"
+            aria-pressed={stem.muted}
+            aria-label={`Mute ${stem.name}`}
+            onClick={() => update({ muted: !stem.muted })}
+            className={cx(btn, stem.muted ? 'bg-amber-500 text-black' : 'bg-white/10 text-gray-300')}
+          >
+            M
+          </button>
+          <button
+            type="button"
+            aria-pressed={stem.solo}
+            aria-label={`Solo ${stem.name}`}
+            onClick={() => update({ solo: !stem.solo })}
+            className={cx(btn, stem.solo ? 'bg-green-500 text-black' : 'bg-white/10 text-gray-300')}
+          >
+            S
+          </button>
+        </div>
+        <VolumeFader gain={stem.gain} label={stem.name} dim={!audible} onChange={(gain) => update({ gain })} />
       </div>
     </div>
   );
@@ -192,7 +183,7 @@ export function Timeline({ project, showTracks = true }: { project: Project; sho
 
   return (
     <div className="flex select-none">
-      <div className="w-[116px] shrink-0 md:w-[188px]">
+      <div className="w-[148px] shrink-0 md:w-[232px]">
         <div style={{ height: SECTION_H }} className="flex items-end pb-1 text-[11px] uppercase tracking-wide text-gray-500">
           Sections
         </div>
@@ -228,7 +219,7 @@ export function Timeline({ project, showTracks = true }: { project: Project; sho
                     stemId={s.id}
                     length={len}
                     color={s.color}
-                    dim={s.muted || (anySolo && !s.solo)}
+                    dim={s.muted || s.gain === 0 || (anySolo && !s.solo)}
                     width={width}
                     height={LANE_H}
                   />

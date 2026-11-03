@@ -91,8 +91,9 @@ export class RenderCore {
   private triggerKind: TriggerKind = 'none';
 
   private params: StemParams[] = [];
-  private gl = new Float32Array(0);
-  private gr = new Float32Array(0);
+  // current (ramping) gains; Float64 so they settle exactly on the target
+  private gl = new Float64Array(0);
+  private gr = new Float64Array(0);
 
   private cap = 0;
   private stemBuf: Float32Array[][] = [];
@@ -140,8 +141,8 @@ export class RenderCore {
     this.seg = 0;
     const n = song ? song.stems.length : 0;
     this.params = Array.from({ length: n }, () => ({ ...DEFAULT_PARAMS }));
-    this.gl = new Float32Array(n);
-    this.gr = new Float32Array(n);
+    this.gl = new Float64Array(n);
+    this.gr = new Float64Array(n);
     this.cap = 0;
     this.ensureCapacity(1024);
     this.setGrid(grid);

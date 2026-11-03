@@ -5,7 +5,7 @@ A simpler take on Ableton for bands, worship teams and anyone learning songs. Up
 bridge and outro, as coloured blocks above the tracks. Then:
 
 - **Practice**: tap a section to jump to it, loop it, slow it down (50–100%) without changing the pitch,
-  mute or solo tracks, and add a click track and a one-bar count-in.
+  mute or solo tracks, set each track's volume in dB, and add a click track and a one-bar count-in.
 - **Arrange**: build a new order (say an extra chorus at the end) by tapping and dragging sections, play
   it seamlessly, and export it as a WAV mix or a ZIP of per-track WAVs.
 - **Live**: big pads for each section. Tap one and it starts at the end of the current section, or at
@@ -105,6 +105,10 @@ and play, and you can mark sections by hand.
 | C | Click on / off | Click on / off |
 
 Held keys are ignored, so pedals that auto-repeat do not skip sections.
+
+Each track's volume fader shows its level in dB: 0 dB is the 80 % mark, the fader goes up to +6 dB, and
+the bottom is off (−∞). Tap the dB value to type an exact number (`-6`, `+2`, `-inf`), or double-click
+the fader to return to 0 dB. Exports use the same volumes.
 
 ## How it works
 
