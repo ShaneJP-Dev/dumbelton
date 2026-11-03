@@ -1,0 +1,26 @@
+[project]
+name = "analyzer"
+version = "0.1.0"
+description = "Song structure analysis service (beats, downbeats, labelled sections)"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "python-multipart>=0.0.9",
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "soundfile>=0.12",
+  "librosa>=0.10",
+  "scikit-learn>=1.4",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: needs the allin1 model (run inside the Docker image)"]
+addopts = "-m 'not slow'"
+
+[tool.uv]
+package = false

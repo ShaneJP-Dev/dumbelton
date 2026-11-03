@@ -1,0 +1,23 @@
+services:
+  analyzer:
+    build:
+      context: ./analyzer
+      target: base
+    ports:
+      - "8000:8000"
+    environment:
+      ANALYZER_BACKEND: librosa
+    restart: unless-stopped
+
+  # Better section labels, much heavier (torch + model). Start with:
+  #   docker compose --profile allin1 up analyzer-allin1
+  analyzer-allin1:
+    profiles: ["allin1"]
+    build:
+      context: ./analyzer
+      target: allin1
+    ports:
+      - "8000:8000"
+    environment:
+      ANALYZER_BACKEND: allin1
+    restart: unless-stopped

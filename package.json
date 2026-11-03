@@ -1,0 +1,10 @@
+{
+  "name": "musical-app",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "test": "pnpm --filter web test",
+    "build": "pnpm --filter web build"
+  },
+  "packageManager": "pnpm@10.0.0"
+}
