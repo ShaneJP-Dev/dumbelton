@@ -173,13 +173,21 @@ test.describe.serial('song workflow', () => {
     const bridgeIndex = p.sections.findIndex((s) => s.name === 'Bridge');
     await page.getByTestId('pad').first().click(); // go to the intro
     await page.getByRole('button', { name: 'At end of section' }).click();
+    await page.getByTestId('fade-4').click(); // fade over 1 bar
     await page.getByTestId('play').click();
     await page.locator('[data-testid=pad][data-name="Bridge"]').click();
     await expect.poll(async () => (await report(page)).pending).toEqual({ at: intro.end, to: bridgeIndex });
     await expect(page.locator('[data-testid=pad][data-name="Bridge"]')).toContainText('Next');
-    await expect.poll(async () => (await report(page)).segment, { timeout: 15_000 }).toBe(bridgeIndex);
+    // the fade starts one bar before the boundary: the Bridge's lead-in comes in under the Intro
+    await expect.poll(async () => (await report(page)).segment, { timeout: 15_000, intervals: [40] }).toBe(bridgeIndex);
+    const db = (await project(page)) as unknown as { downbeats: number[] };
+    const bar = db.downbeats[5] - db.downbeats[4];
+    const bridgeStart = p.sections[bridgeIndex].start;
     const r = await report(page);
-    expect(r.frame).toBeGreaterThanOrEqual(p.sections[bridgeIndex].start);
+    expect(r.frame).toBeGreaterThan(bridgeStart - bar - 4800);
+    expect(r.frame).toBeLessThan(bridgeStart);
+    // ...and the Bridge itself plays from its first downbeat
+    await expect.poll(async () => (await report(page)).frame, { timeout: 5000 }).toBeGreaterThanOrEqual(bridgeStart);
     await page.getByTestId('play').click();
   });
 

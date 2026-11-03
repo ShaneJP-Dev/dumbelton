@@ -103,6 +103,8 @@ export class RenderCore {
 
   private stretcher: Stretcher | null = null;
   private speed = 1;
+  /** Crossfade length for jumps and arrangement joins (frames); XFADE_FRAMES = a clean cut. */
+  private transition = XFADE_FRAMES;
   private stretching = false;
   /** Source frame of the last output frame (differs from pos while the stretcher buffers). */
   private lastOut = 0;
@@ -176,6 +178,24 @@ export class RenderCore {
 
   getSpeed(): number {
     return this.speed;
+  }
+
+  /**
+   * How long jumps between parts fade (frames). The fade always ends on the
+   * target downbeat at full level, so it starts this long before the boundary.
+   * Loops keep a short crossfade so they stay tight.
+   */
+  setTransition(frames: number): void {
+    const f = Math.max(XFADE_FRAMES, Math.min(8 * this.sampleRate, Math.round(frames)));
+    if (f === this.transition) return;
+    this.transition = f;
+    const p = this.pending;
+    if (p && this.isRunning()) this.queueJump(p.to, p.q); // re-time the queued jump
+    else this.computeTrigger();
+  }
+
+  getTransition(): number {
+    return this.transition;
   }
 
   setStem(index: number, p: Partial<StemParams>): void {
@@ -297,7 +317,7 @@ export class RenderCore {
       const nb = nextDownbeat(this.downbeats, this.pos + XFADE_FRAMES - 1);
       at = nb === null ? cur.end : Math.min(nb, cur.end);
     }
-    let len = XFADE_FRAMES;
+    let len = q === 'now' ? XFADE_FRAMES : this.transition;
     let start = at - len;
     if (start < this.pos) {
       len = Math.max(32, at - this.pos);
@@ -410,7 +430,7 @@ export class RenderCore {
       t = cur.end;
       kind = 'contig';
     } else {
-      t = cur.end - XFADE_FRAMES;
+      t = cur.end - this.joinLen();
       kind = 'xfade';
     }
     if (t < this.pos) t = this.pos;
@@ -420,6 +440,11 @@ export class RenderCore {
     }
     this.trigger = t;
     this.triggerKind = kind;
+  }
+
+  /** Crossfade length at a join between segments: loops stay tight, arrangements use the transition. */
+  private joinLen(): number {
+    return this.program.loop ? XFADE_FRAMES : this.transition;
   }
 
   /** Start a crossfade from the current position into the start of segment `to`. */
@@ -450,7 +475,7 @@ export class RenderCore {
       }
       case 'xfade': {
         const nx = this.nextIndex(this.seg);
-        const len = Math.max(32, Math.min(XFADE_FRAMES, cur.end - this.pos));
+        const len = Math.max(32, Math.min(this.joinLen(), cur.end - this.pos));
         this.startXfade(nx, len);
         this.emit({ type: 'segment', index: nx });
         break;

@@ -7,6 +7,8 @@ export interface ExportOptions {
   stemFiles: boolean;
   speed: number;
   click: boolean;
+  /** Fade length (frames) at arrangement joins. */
+  transition: number;
 }
 
 export interface ExportedFile {

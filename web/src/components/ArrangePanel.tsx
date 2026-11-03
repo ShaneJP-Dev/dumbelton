@@ -14,12 +14,14 @@ import { useEffect, useState } from 'react';
 import { SAMPLE_RATE } from '../audio/core/types';
 import { arrangementLength, arrangementProgram, newArrangement, playableItems } from '../lib/arrangement';
 import { exportProgram, saveFile, type ExportedFile } from '../lib/exporter';
+import { fadeFrames } from '../lib/fade';
 import { uid } from '../lib/ids';
 import { barsIn, KIND_META } from '../lib/sections';
 import type { Arrangement, ArrangementItem, Project, Section } from '../lib/types';
 import { patchProject, syncProgram, toast } from '../state/actions';
 import { getEngine } from '../state/engine';
 import { getState, setState, useApp } from '../state/store';
+import { FadePicker } from './FadePicker';
 import { Copy, Download, Play, Plus, Trash, X } from './icons';
 import { Button, cx, formatTime, Modal, Spinner } from './ui';
 
@@ -84,6 +86,7 @@ function Item({
 
 function ExportDialog({ open, onClose, project, arr }: { open: boolean; onClose: () => void; project: Project; arr: Arrangement }) {
   const speed = useApp((s) => s.speed);
+  const fade = useApp((s) => s.fade);
   const [mix, setMix] = useState(true);
   const [stems, setStems] = useState(false);
   const [useSpeed, setUseSpeed] = useState(false);
@@ -106,7 +109,7 @@ function ExportDialog({ open, onClose, project, arr }: { open: boolean; onClose:
         project,
         program,
         `${project.name} - ${arr.name}`,
-        { mix, stemFiles: stems, speed: useSpeed ? speed : 1, click },
+        { mix, stemFiles: stems, speed: useSpeed ? speed : 1, click, transition: fadeFrames(project, fade) },
         (f, stage) => setBusy(stage === 'zip' ? `Packing tracks… ${Math.round(f * 100)}%` : `Rendering… ${Math.round(f * 100)}%`),
       );
       setFiles(res.files);
@@ -290,7 +293,8 @@ export function ArrangePanel({ project }: { project: Project }) {
         >
           <Trash size={16} />
         </Button>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <FadePicker hasGrid={project.beats.length > 1} />
           <span className="text-sm tabular-nums text-gray-400">
             {formatTime(total / SAMPLE_RATE)}
             {bars ? ` · ${bars} bars` : ''}

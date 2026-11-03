@@ -9,7 +9,8 @@ bridge and outro, as coloured blocks above the tracks. Then:
 - **Arrange**: build a new order (say an extra chorus at the end) by tapping and dragging sections, play
   it seamlessly, and export it as a WAV mix or a ZIP of per-track WAVs.
 - **Live**: big pads for each section. Tap one and it starts at the end of the current section, or at
-  the next bar. Setlists load the next song in advance. Works with keyboard shortcuts and Bluetooth
+  the next bar, with a clean cut or a fade over 1 beat, 2 beats or 1 bar (the new part still lands on
+  its downbeat at full volume; the same fade is used between the parts of an arrangement). Setlists load the next song in advance. Works with keyboard shortcuts and Bluetooth
   page-turner pedals.
 
 Everything runs in the browser and is stored on the device. A small Python service only analyses audio

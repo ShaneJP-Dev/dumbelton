@@ -122,6 +122,10 @@ export class AudioEngine {
   setSpeed(speed: number): void {
     this.send({ type: 'speed', speed });
   }
+  /** Fade length (frames) for jumps between parts and arrangement joins. */
+  setTransition(frames: number): void {
+    this.send({ type: 'transition', frames });
+  }
   setGrid(grid: Grid): void {
     this.send({ type: 'grid', grid });
   }

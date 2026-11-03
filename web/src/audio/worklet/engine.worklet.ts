@@ -90,6 +90,9 @@ class EngineProcessor extends AudioWorkletProcessor {
       case 'speed':
         core.setSpeed(m.speed);
         break;
+      case 'transition':
+        core.setTransition(m.frames);
+        break;
       case 'grid':
         core.setGrid(m.grid);
         if (this.active >= 0 && this.slots[this.active]) this.slots[this.active]!.grid = m.grid;

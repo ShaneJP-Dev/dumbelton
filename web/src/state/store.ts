@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Quantize } from '../audio/core/types';
 import type { SnapMode } from '../lib/sections';
+import { loadFade, type FadeBeats } from '../lib/fade';
 import type { Project, Setlist } from '../lib/types';
 
 export type Mode = 'practice' | 'arrange' | 'live';
@@ -29,6 +30,8 @@ export interface AppState {
   loop: boolean;
   selected: string | null;
   quantize: Exclude<Quantize, 'now'>;
+  /** Fade when jumping between parts (Live) and at arrangement joins. */
+  fade: FadeBeats;
   snap: SnapMode;
   arrangementId: string | null;
   transport: Transport;
@@ -56,6 +59,7 @@ export const useApp = create<AppState>(() => ({
   loop: false,
   selected: null,
   quantize: 'segmentEnd',
+  fade: loadFade(),
   snap: 'bar',
   arrangementId: null,
   transport: { playing: false, segment: 0, pending: null },

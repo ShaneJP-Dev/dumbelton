@@ -40,6 +40,8 @@ export interface ExportRequest {
   grid: Grid;
   program: Program;
   speed: number;
+  /** Fade length (frames) at arrangement joins, as in playback. */
+  transition: number;
   click: boolean;
   mix: boolean;
   stemFiles: boolean;
@@ -108,6 +110,7 @@ scope.onmessage = async (e: MessageEvent<ExportRequest>) => {
     core.setClick({ enabled: req.click, bus: 'main' });
     core.setStretcher(new LinkedWsola(SAMPLE_RATE));
     core.setSpeed(req.speed);
+    core.setTransition(req.transition);
 
     const dir = await exportsDir();
     // clear previous exports

@@ -10,6 +10,7 @@ import { getEngine } from '../state/engine';
 import { navigate } from '../state/actions';
 import { goToSetlistIndex, goToSongLive, nextSong, saveLiveState } from '../state/live';
 import { setState, useApp } from '../state/store';
+import { FadePicker } from './FadePicker';
 import { Expand, Next, Prev, X } from './icons';
 import { Button, cx, formatTime } from './ui';
 
@@ -228,6 +229,7 @@ export function LivePanel({ project }: { project: Project }) {
             </button>
           ))}
         </div>
+        <FadePicker hasGrid={project.beats.length > 1} />
         {arrangement && <span className="text-sm text-gray-400">Arrangement: {arrangement.name}</span>}
         <div className="ml-auto flex gap-2">
           {pending && (

@@ -3,6 +3,7 @@ import { arrangementProgram, liveProgram, songProgram } from '../lib/arrangement
 import { deleteProjectData } from '../lib/importer';
 import type { Project, Section, Setlist } from '../lib/types';
 import { addSectionAt, snapFrame } from '../lib/sections';
+import { fadeFrames, saveFade, type FadeBeats } from '../lib/fade';
 import { barLength } from '../audio/core/grid';
 import { SAMPLE_RATE } from '../audio/core/types';
 import type { Program } from '../audio/core/types';
@@ -184,6 +185,7 @@ export async function openProject(id: string, opts: { keepMode?: boolean } = {})
     watchEngine();
     engine.setClick({ enabled: getState().click });
     engine.setSpeed(getState().speed);
+    syncTransition();
     syncProgram();
   } catch (err) {
     setState({ engineError: String((err as Error).message ?? err) });
@@ -222,6 +224,20 @@ export function syncGrid(): void {
   const engine = peekEngine();
   const cur = getState().current;
   if (engine && cur && engine.activeSongId === cur.id) engine.setGrid(projectGrid(cur));
+  syncTransition(); // fades are measured in beats, which may have changed
+}
+
+/** Send the fade length (in this song's beats) to the engine. */
+export function syncTransition(): void {
+  const engine = peekEngine();
+  const { current, fade } = getState();
+  if (engine && current && engine.activeSongId === current.id) engine.setTransition(fadeFrames(current, fade));
+}
+
+export function setFade(fade: FadeBeats): void {
+  setState({ fade });
+  saveFade(fade);
+  syncTransition();
 }
 
 export function syncStems(): void {
