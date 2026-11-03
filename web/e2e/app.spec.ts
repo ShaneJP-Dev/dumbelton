@@ -211,17 +211,37 @@ test.describe.serial('song workflow', () => {
   });
 });
 
-test('without the analyzer, the song still opens and sections can be marked by hand', async ({ page }) => {
+test('without the analyzer, sections can be marked by hand and added anywhere', async ({ page }) => {
   await page.route('**/api/jobs', (route) => route.fulfill({ status: 502, body: 'Bad Gateway' }));
   await importSong(page, 'Offline Song');
   await expect(page.getByText(/analysis server is not running/).first()).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Mark sections by hand' }).click();
   await expect(page.getByTestId('section')).toHaveCount(1);
-  await page.getByTestId('section').click();
-  await page.evaluate(() => (window as unknown as { __engine: { seek(f: number): void } }).__engine.seek(48000 * 30));
+  const seek = (sec: number) =>
+    page.evaluate((f) => (window as unknown as { __engine: { seek(f: number): void } }).__engine.seek(f), 48000 * sec);
+  // Add section at the playhead; the new section is selected so it can be retyped
+  await seek(30);
   await page.waitForTimeout(200);
-  await page.getByRole('button', { name: /Split at playhead/ }).click();
+  await page.getByTestId('add-section').click();
   await expect(page.getByTestId('section')).toHaveCount(2);
+  await page.getByRole('group', { name: 'Section type' }).getByRole('button', { name: 'Tag' }).click();
+  await expect(page.locator('[data-testid=section][data-name="Tag"]')).toHaveCount(1);
+  // the A key adds one while listening
+  await seek(60);
+  await page.waitForTimeout(200);
+  await page.keyboard.press('a');
+  await expect(page.getByTestId('section')).toHaveCount(3);
+  // too close to the start of a section: refused with a message
+  await seek(60.3);
+  await page.waitForTimeout(200);
+  await page.keyboard.press('a');
+  await expect(page.getByRole('status')).toContainText('Too close to the start');
+  await expect(page.getByTestId('section')).toHaveCount(3);
+  // double-click the bar to add a section right there
+  const last = page.getByTestId('section').last();
+  const box = (await last.boundingBox())!;
+  await last.dblclick({ position: { x: box.width / 2, y: box.height / 2 } });
+  await expect(page.getByTestId('section')).toHaveCount(4);
 });
 
 test('imports m4a stems from a folder, skipping Ableton .asd files', async ({ page }) => {

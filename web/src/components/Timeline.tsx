@@ -1,11 +1,9 @@
 import { useCallback, useRef, type PointerEvent as RPointerEvent } from 'react';
-import { barLength } from '../audio/core/grid';
-import { SAMPLE_RATE } from '../audio/core/types';
 import { usePlayhead, usePlayheadValue, useWidth } from '../hooks/usePlayhead';
 import { KIND_META, moveBoundary, sectionIndexAt, snapFrame, barsIn, shortName } from '../lib/sections';
 import { displayFrame, songLayout, sourceAt, type Layout } from '../lib/layout';
 import type { Project, Stem } from '../lib/types';
-import { patchProject, syncProgram, syncStems } from '../state/actions';
+import { addSectionAtFrame, minSectionLength, patchProject, syncProgram, syncStems } from '../state/actions';
 import { getEngine, peekEngine } from '../state/engine';
 import { getState, setState, useApp } from '../state/store';
 import { cx } from './ui';
@@ -36,7 +34,7 @@ function SectionBar({ project, width }: { project: Project; width: number }) {
   const current = usePlayheadValue((f) => sectionIndexAt(project.sections, f), -1);
   const drag = useRef<{ i: number; rect: DOMRect } | null>(null);
 
-  const minLen = Math.max(SAMPLE_RATE / 2, project.downbeats.length >= 2 ? barLength(project.downbeats) : SAMPLE_RATE);
+  const minLen = minSectionLength(project);
 
   const onHandleDown = (i: number) => (e: RPointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -88,6 +86,12 @@ function SectionBar({ project, width }: { project: Project; width: number }) {
               setState({ selected: s.id });
               if (getState().loop) syncProgram();
               seekTo(s.start);
+            }}
+            onDoubleClick={(e) => {
+              // add a section where the bar was double-clicked
+              const bar = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+              const added = addSectionAtFrame(((e.clientX - bar.left) / bar.width) * len);
+              if (added) seekTo(added.start);
             }}
             className={cx(
               'absolute top-0 bottom-0 overflow-hidden rounded-md px-2 text-left transition-[filter,box-shadow]',

@@ -90,7 +90,9 @@ downloads from download.pytorch.org, shi-labs.com, github.com and huggingface.co
 verified in this repository's test environment, because those hosts were not reachable there.
 
 Whatever the analyzer finds, every section can be adjusted by hand: drag the edges (they snap to bars or
-beats), rename, change type, split, merge or delete. If the analyzer is not running, songs still import
+beats), rename, change type (including Tag, Vamp and Interlude), merge or delete. To add a section the
+analyzer missed, press **A** while the song plays, double-click the section bar, or use **Add section**.
+The new section starts at that point, on the nearest bar. If the analyzer is not running, songs still import
 and play, and you can mark sections by hand.
 
 ## Keyboard
@@ -101,6 +103,7 @@ and play, and you can mark sections by hand.
 | 1–9 | Jump to section | Queue section |
 | ← → / PageUp PageDown | Previous / next section | Queue previous / next section |
 | Shift + ← → | | Previous / next song in the setlist |
+| A | Add a section at the playhead | |
 | L | Loop selected section | |
 | C | Click on / off | Click on / off |
 

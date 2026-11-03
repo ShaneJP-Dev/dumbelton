@@ -180,6 +180,23 @@ describe('RenderCore', () => {
       expect(core.position.frame).toBe(16000);
     });
 
+    it('a quantised jump sent right after play still queues (the core decides, not the UI)', () => {
+      const { core, events } = liveCore(); // liveCore() has just called play()
+      core.queueJump(2, 'segmentEnd');
+      expect(events).toContainEqual({ type: 'armed', at: 8000, to: 2 });
+      run(core, 8000);
+      expect(core.position.frame).toBe(16000);
+    });
+
+    it('during the count-in, a tapped section becomes the starting point', () => {
+      const { core } = liveCore();
+      core.pause();
+      run(core, 512);
+      core.play({ countIn: true });
+      core.queueJump(1, 'segmentEnd');
+      expect(core.position.frame).toBe(8000);
+    });
+
     it('jumping while stopped moves straight to the section', () => {
       const { core } = liveCore();
       core.pause();

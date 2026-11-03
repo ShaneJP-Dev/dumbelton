@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react';
-import { barLength } from '../audio/core/grid';
-import { SAMPLE_RATE } from '../audio/core/types';
 import { analyzeProject } from '../lib/analysis';
 import {
   defaultSections,
@@ -10,15 +8,13 @@ import {
   removeSection,
   renameSection,
   setKind,
-  snapFrame,
-  splitAt,
   type SnapMode,
 } from '../lib/sections';
 import type { Project } from '../lib/types';
-import { patchProject, syncProgram } from '../state/actions';
+import { addSectionAtFrame, patchProject, syncProgram } from '../state/actions';
 import { peekEngine } from '../state/engine';
 import { setState, useApp } from '../state/store';
-import { Scissors, Trash, Wand } from './icons';
+import { Plus, Trash, Wand } from './icons';
 import { Button, cx, Spinner } from './ui';
 
 function SnapPicker() {
@@ -48,13 +44,11 @@ function SnapPicker() {
 
 export function SectionEditor({ project }: { project: Project }) {
   const selected = useApp((s) => s.selected);
-  const snap = useApp((s) => s.snap);
   const idx = project.sections.findIndex((s) => s.id === selected);
   const sec = idx >= 0 ? project.sections[idx] : null;
   const [name, setName] = useState(sec?.name ?? '');
   useEffect(() => setName(sec?.name ?? ''), [sec?.id, sec?.name]);
 
-  const minLen = Math.max(SAMPLE_RATE / 2, project.downbeats.length >= 2 ? barLength(project.downbeats) : SAMPLE_RATE);
   const analysis = project.analysis;
   const running = analysis.status === 'running';
 
@@ -90,6 +84,14 @@ export function SectionEditor({ project }: { project: Project }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2 py-2">
+      <Button
+        variant="primary"
+        title="Start a new section at the playhead (key: A)"
+        onClick={() => addSectionAtFrame(peekEngine()?.clock.now() ?? 0)}
+        data-testid="add-section"
+      >
+        <Plus size={16} /> Add section
+      </Button>
       {sec ? (
         <>
           <input
@@ -117,16 +119,6 @@ export function SectionEditor({ project }: { project: Project }) {
               </button>
             ))}
           </div>
-          <Button
-            title="Split this section at the playhead"
-            onClick={() => {
-              const f = peekEngine()?.clock.now() ?? sec.start;
-              const at = snapFrame(f, snap, project.beats, project.downbeats);
-              edit((p) => ({ ...p, sections: splitAt(p.sections, at, minLen) }));
-            }}
-          >
-            <Scissors size={16} /> Split at playhead
-          </Button>
           <Button disabled={idx >= project.sections.length - 1} onClick={() => edit((p) => ({ ...p, sections: mergeWithNext(p.sections, idx) }))}>
             Merge with next
           </Button>
@@ -143,7 +135,10 @@ export function SectionEditor({ project }: { project: Project }) {
           </Button>
         </>
       ) : (
-        <span className="text-sm text-gray-400">Tap a section to jump to it. Drag the edges between sections to adjust them.</span>
+        <span className="text-sm text-gray-400">
+          Tap a section to jump to it, drag the edges between sections to adjust them. To add a section, press A while it plays,
+          double-click the bar, or use Add section.
+        </span>
       )}
       <div className="ml-auto flex items-center gap-2">
         <SnapPicker />

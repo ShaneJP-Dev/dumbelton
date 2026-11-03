@@ -3,7 +3,20 @@ import type { Frame } from '../audio/core/types';
 import { uid } from './ids';
 import type { Section, SectionKind } from './types';
 
-export const KINDS: SectionKind[] = ['intro', 'verse', 'pre-chorus', 'chorus', 'bridge', 'solo', 'inst', 'break', 'outro'];
+export const KINDS: SectionKind[] = [
+  'intro',
+  'verse',
+  'pre-chorus',
+  'chorus',
+  'bridge',
+  'interlude',
+  'tag',
+  'vamp',
+  'solo',
+  'inst',
+  'break',
+  'outro',
+];
 
 export const KIND_META: Record<SectionKind, { label: string; color: string }> = {
   intro: { label: 'Intro', color: '#64748b' },
@@ -14,6 +27,9 @@ export const KIND_META: Record<SectionKind, { label: string; color: string }> = 
   solo: { label: 'Solo', color: '#eab308' },
   inst: { label: 'Instrumental', color: '#22c55e' },
   break: { label: 'Break', color: '#94a3b8' },
+  interlude: { label: 'Interlude', color: '#84cc16' },
+  tag: { label: 'Tag', color: '#ec4899' },
+  vamp: { label: 'Vamp', color: '#14b8a6' },
   outro: { label: 'Outro', color: '#475569' },
 };
 
@@ -107,6 +123,23 @@ export function splitAt(sections: Section[], f: Frame, minLen: Frame): Section[]
   const left: SectionWithCustom = { ...s, end: f };
   const right: SectionWithCustom = { ...s, id: uid('x_'), start: f, custom: false };
   return renumber([...sections.slice(0, i), left, right, ...sections.slice(i + 1)]);
+}
+
+export type AddResult = { sections: Section[]; added: Section } | { error: string };
+
+/**
+ * Add a section starting at frame f by cutting the section that contains f in
+ * two. The new (right) part keeps the kind; the caller selects it so it can be
+ * renamed or retyped. Both parts must be at least `minLen` long.
+ */
+export function addSectionAt(sections: Section[], f: Frame, minLen: Frame): AddResult {
+  const i = sectionIndexAt(sections, f);
+  if (i < 0) return { error: 'Mark the song’s sections first.' };
+  const s = sections[i];
+  if (f - s.start < minLen) return { error: `Too close to the start of ${s.name}. Move the playhead further into it.` };
+  if (s.end - f < minLen) return { error: `Too close to the end of ${s.name}. Move the playhead back a little.` };
+  const next = splitAt(sections, f, minLen);
+  return { sections: next, added: next[i + 1] };
 }
 
 export function mergeWithNext(sections: Section[], i: number): Section[] {

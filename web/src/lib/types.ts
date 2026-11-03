@@ -9,6 +9,9 @@ export type SectionKind =
   | 'solo'
   | 'inst'
   | 'break'
+  | 'interlude'
+  | 'tag'
+  | 'vamp'
   | 'outro';
 
 export interface Stem {

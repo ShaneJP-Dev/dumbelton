@@ -1,7 +1,10 @@
 import { db } from '../lib/db';
 import { arrangementProgram, liveProgram, songProgram } from '../lib/arrangement';
 import { deleteProjectData } from '../lib/importer';
-import type { Project, Setlist } from '../lib/types';
+import type { Project, Section, Setlist } from '../lib/types';
+import { addSectionAt, snapFrame } from '../lib/sections';
+import { barLength } from '../audio/core/grid';
+import { SAMPLE_RATE } from '../audio/core/types';
 import type { Program } from '../audio/core/types';
 import { activateProject, applyStemParams, getEngine, peekEngine, projectGrid } from './engine';
 import { getState, setState, type Mode, type Route } from './store';
@@ -242,6 +245,37 @@ export function setSpeed(speed: number): void {
 export function setClick(on: boolean): void {
   setState({ click: on });
   peekEngine()?.setClick({ enabled: on });
+}
+
+// ------------------------------------------------------------------ sections
+
+/** Shortest section allowed when editing: one bar (at least half a second). */
+export function minSectionLength(p: Project): number {
+  return Math.max(SAMPLE_RATE / 2, p.downbeats.length >= 2 ? barLength(p.downbeats) : SAMPLE_RATE);
+}
+
+/**
+ * Add a section starting at `frame` (snapped to bar/beat per the snap setting)
+ * and select it. Returns the new section, or null (with a message) if it would
+ * be too short.
+ */
+export function addSectionAtFrame(frame: number): Section | null {
+  const { current, snap } = getState();
+  if (!current) return null;
+  if (current.sections.length === 0) {
+    toast('Find or mark the song’s sections first.');
+    return null;
+  }
+  const f = snapFrame(frame, snap, current.beats, current.downbeats);
+  const r = addSectionAt(current.sections, f, minSectionLength(current));
+  if ('error' in r) {
+    toast(r.error);
+    return null;
+  }
+  patchProject((p) => ({ ...p, sections: r.sections }));
+  setState({ selected: r.added.id });
+  syncProgram();
+  return r.added;
 }
 
 // ------------------------------------------------------------------ setlists

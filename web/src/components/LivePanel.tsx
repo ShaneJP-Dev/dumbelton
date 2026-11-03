@@ -6,7 +6,7 @@ import { usePlayheadValue } from '../hooks/usePlayhead';
 import { livePads } from '../lib/arrangement';
 import { barsIn, KIND_META } from '../lib/sections';
 import type { Project } from '../lib/types';
-import { getEngine, peekEngine } from '../state/engine';
+import { getEngine } from '../state/engine';
 import { navigate } from '../state/actions';
 import { goToSetlistIndex, goToSongLive, nextSong, saveLiveState } from '../state/live';
 import { setState, useApp } from '../state/store';
@@ -193,10 +193,9 @@ export function LivePanel({ project }: { project: Project }) {
     saveLiveState(transport.segment);
   }, [transport.segment]);
 
-  const tap = (i: number) => {
-    const playing = peekEngine()?.clock.playing ?? false;
-    void getEngine().then((e) => e.queueJump(i, playing ? quantize : 'now'));
-  };
+  // The audio thread decides: stopped -> move there now, playing -> queue at the boundary.
+  // (Deciding here from the last position report could be ~10 ms stale.)
+  const tap = (i: number) => void getEngine().then((e) => e.queueJump(i, quantize));
 
   const noSections = project.sections.length === 0;
 

@@ -10,7 +10,17 @@ import { Button, cx } from '../components/ui';
 import { useShortcuts } from '../hooks/useShortcuts';
 import { arrangementLayout } from '../lib/layout';
 import { sectionIndexAt } from '../lib/sections';
-import { deleteProject, navigate, openProject, patchProject, setClick, setMode, syncProgram, togglePlay } from '../state/actions';
+import {
+  addSectionAtFrame,
+  deleteProject,
+  navigate,
+  openProject,
+  patchProject,
+  setClick,
+  setMode,
+  syncProgram,
+  togglePlay,
+} from '../state/actions';
 import { exitLive, nextSong, preloadNextSong, restoreLiveState } from '../state/live';
 import { getEngine, peekEngine } from '../state/engine';
 import { getState, setState, useApp, type Mode } from '../state/store';
@@ -87,7 +97,7 @@ export function SongView({ id }: { id: string }) {
     const { current, mode: m, quantize } = getState();
     if (!current || i < 0 || i >= current.sections.length) return;
     if (m === 'live') {
-      void getEngine().then((e) => e.queueJump(i, peekEngine()?.clock.playing ? quantize : 'now'));
+      void getEngine().then((e) => e.queueJump(i, quantize)); // the engine moves directly when stopped
       return;
     }
     setState({ selected: current.sections[i].id });
@@ -133,6 +143,10 @@ export function SongView({ id }: { id: string }) {
         if (e.key === 'l' || e.key === 'L') {
           setState({ loop: !getState().loop });
           syncProgram();
+          return true;
+        }
+        if ((e.key === 'a' || e.key === 'A') && getState().mode === 'practice') {
+          addSectionAtFrame(peekEngine()?.clock.now() ?? 0);
           return true;
         }
         if (e.key === 'c' || e.key === 'C') {

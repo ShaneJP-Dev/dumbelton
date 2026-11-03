@@ -99,3 +99,32 @@ describe('shortName', () => {
     expect(shortName('Instrumental 3')).toBe('In3');
   });
 });
+
+import { addSectionAt } from './sections';
+describe('addSectionAt', () => {
+  it('cuts a new section at a frame and returns it', () => {
+    const secs = renumber([S('verse', 0, 1000), S('chorus', 1000, 2000)]);
+    const r = addSectionAt(secs, 600, 100);
+    if ('error' in r) throw new Error(r.error);
+    expect(r.sections.map((s) => [s.name, s.start, s.end])).toEqual([
+      ['Verse 1', 0, 600],
+      ['Verse 2', 600, 1000],
+      ['Chorus', 1000, 2000],
+    ]);
+    expect(r.added.start).toBe(600);
+    expect(r.added.id).not.toBe(secs[0].id);
+  });
+
+  it('refuses to make a section shorter than the minimum', () => {
+    const secs = renumber([S('verse', 0, 1000), S('chorus', 1000, 2000)]);
+    const r = addSectionAt(secs, 1030, 100);
+    expect('error' in r && r.error).toMatch(/start of Chorus/);
+    const r2 = addSectionAt(secs, 970, 100);
+    expect('error' in r2 && r2.error).toMatch(/end of Verse/);
+  });
+
+  it('offers worship-song section types', () => {
+    const secs = setKind(renumber([S('verse', 0, 1000), S('chorus', 1000, 2000), S('chorus', 2000, 3000)]), 2, 'tag');
+    expect(secs.map((s) => s.name)).toEqual(['Verse', 'Chorus', 'Tag']);
+  });
+});
