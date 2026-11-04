@@ -76,6 +76,7 @@ export async function goToSetlistIndex(setlistId: string, index: number): Promis
     live: { setlistId, index },
     liveArrangementId: entry.arrangementId ?? null,
     liveEnded: false,
+    liveMuted: [],
     mode: 'live',
   });
   navigate({ name: 'song', id: entry.projectId });
@@ -85,7 +86,7 @@ export async function goToSetlistIndex(setlistId: string, index: number): Promis
 export async function goToSongLive(projectId: string): Promise<void> {
   if (getState().current?.id === projectId && !getState().live) return;
   (await getEngine()).pause();
-  setState({ live: null, liveArrangementId: null, liveEnded: false, mode: 'live', keepModeOnOpen: true });
+  setState({ live: null, liveArrangementId: null, liveEnded: false, liveMuted: [], mode: 'live', keepModeOnOpen: true });
   navigate({ name: 'song', id: projectId });
 }
 

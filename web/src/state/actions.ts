@@ -176,6 +176,7 @@ export async function openProject(id: string, opts: { keepMode?: boolean } = {})
       selected: null,
       loop: false,
       liveEnded: false,
+      liveMuted: [],
       arrangementId: p.arrangements[0]?.id ?? null,
       transport: { playing: false, segment: 0, pending: null },
       // a different song opens in Practice, unless a setlist / resumed live session is running
@@ -220,8 +221,19 @@ export function syncProgram(): void {
 }
 
 export function setMode(mode: Mode): void {
-  setState({ mode });
+  const entering = mode === 'live' && getState().mode !== 'live';
+  // entering Live: nothing muted ("super live"); leaving: the song's own mutes come back
+  setState(entering ? { mode, liveMuted: [] } : { mode });
+  syncStems();
   syncProgram();
+}
+
+/** Mute or unmute a track on the Live screen (does not change the song's saved mutes). */
+export function setLiveMuted(stemId: string, muted: boolean): void {
+  const cur = getState().liveMuted;
+  const next = muted ? [...new Set([...cur, stemId])] : cur.filter((id) => id !== stemId);
+  setState({ liveMuted: next });
+  syncStems();
 }
 
 /** Push the project's grid to the engine after analysis or edits. */

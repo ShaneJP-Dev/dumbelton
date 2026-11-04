@@ -300,17 +300,10 @@ test.describe.serial('song workflow', () => {
     await engine('play');
     let peak = await levels();
     const on = (k: number) => peak[k] > 0.01;
-    expect([2, 3, 4, 5, 6, 11, 12].filter(on)).toEqual([2, 3, 4, 5, 6, 11, 12]); // drums, bass, keys, lead (Other)
-    // click (muted in an earlier test), guide (none), guitars, vocals and unused channels are silent
-    expect([0, 1, 7, 8, 9, 10, 13, 14, 20, 31].filter(on)).toEqual([]);
-    // the app's own click goes to the Click channel (1)
-    await page.evaluate(() =>
-      (window as unknown as { __engine: { setClick(p: object): void } }).__engine.setClick({ enabled: true, gain: 1 }),
-    );
-    peak = await levels();
-    expect(on(0)).toBe(true);
-    expect(on(1)).toBe(false);
-    await page.evaluate(() => (window as unknown as { __engine: { setClick(p: object): void } }).__engine.setClick({ enabled: false }));
+    // the song opened in Live (the setlist is running), where nothing is muted: the click track plays on 1
+    expect([0, 2, 3, 4, 5, 6, 11, 12].filter(on)).toEqual([0, 2, 3, 4, 5, 6, 11, 12]); // click, drums, bass, keys, lead (Other)
+    // guide (none), guitars, vocals and unused channels are silent
+    expect([1, 7, 8, 9, 10, 13, 14, 20, 31].filter(on)).toEqual([]);
 
     // move Bass to channel 14
     await page.getByLabel('Bass first channel').fill('14');
@@ -329,6 +322,52 @@ test.describe.serial('song workflow', () => {
     expect(peak[0]).toBe(0);
 
     await page.getByTestId('mode-stereo').click();
+  });
+
+  test('Live starts with nothing muted, and muting a track there needs a 3-second hold', async () => {
+    const mutes = () =>
+      page.evaluate(() =>
+        (window as unknown as { __engine: { stemParams: { mute?: boolean }[] } }).__engine.stemParams.map((p) => !!p.mute),
+      );
+    await page.goto('/');
+    await page.getByTestId('song-card').filter({ hasText: 'E2E Song' }).click();
+    await page.getByRole('button', { name: 'Practice', exact: true }).click();
+    await page.getByRole('button', { name: 'Mute drums' }).click();
+    await expect(page.getByRole('button', { name: 'Mute click' })).toHaveAttribute('aria-pressed', 'true'); // from an earlier test
+    await expect.poll(async () => (await mutes()).filter(Boolean).length).toBe(2);
+
+    // Live: everything plays
+    await page.getByRole('button', { name: 'Live', exact: true }).click();
+    const chips = page.getByTestId('live-track');
+    await expect(chips).toHaveCount(5);
+    await expect.poll(mutes).toEqual([false, false, false, false, false]);
+    const names = await chips.evaluateAll((els) => els.map((e) => e.getAttribute('data-name')));
+    const drums = page.locator('[data-testid=live-track][data-name="drums"]');
+    const box = (await drums.boundingBox())!;
+    const holdFor = async (ms: number) => {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.waitForTimeout(ms);
+      await page.mouse.up();
+    };
+    // a short press does nothing
+    await holdFor(1000);
+    await expect(drums).toHaveAttribute('data-muted', 'false');
+    expect((await mutes())[names.indexOf('drums')]).toBe(false);
+    // a 3-second hold mutes
+    await holdFor(3300);
+    await expect(drums).toHaveAttribute('data-muted', 'true');
+    await expect.poll(async () => (await mutes())[names.indexOf('drums')]).toBe(true);
+    // a tap unmutes
+    await drums.click();
+    await expect(drums).toHaveAttribute('data-muted', 'false');
+    await expect.poll(async () => (await mutes())[names.indexOf('drums')]).toBe(false);
+
+    // back in Practice the song's own mutes return
+    await page.getByRole('button', { name: 'Practice', exact: true }).click();
+    await expect.poll(async () => (await mutes())[names.indexOf('drums')]).toBe(true);
+    expect((await mutes())[names.indexOf('click')]).toBe(true);
+    await page.getByRole('button', { name: 'Mute drums' }).click();
   });
 });
 

@@ -11,6 +11,7 @@ import { navigate } from '../state/actions';
 import { goToSetlistIndex, goToSongLive, nextSong, saveLiveState } from '../state/live';
 import { setState, useApp } from '../state/store';
 import { FadePicker } from './FadePicker';
+import { LiveTracks } from './LiveTracks';
 import { Expand, Next, Prev, X } from './icons';
 import { Button, cx, formatTime } from './ui';
 
@@ -278,6 +279,7 @@ export function LivePanel({ project }: { project: Project }) {
           );
         })}
       </div>
+      <LiveTracks stems={project.stems} />
       <p className="mt-4 text-center text-xs text-gray-500">
         Tap a section to play it next. Keys: Space play/stop · 1–9 sections · ← → previous/next section (works with page-turner pedals) ·
         Shift+→ next song

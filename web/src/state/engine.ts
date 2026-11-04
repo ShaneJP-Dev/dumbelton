@@ -2,6 +2,7 @@ import { AudioEngine } from '../audio/engine/AudioEngine';
 import { loadWireSong } from '../audio/import/pcmStore';
 import type { Grid } from '../audio/core/types';
 import type { Project } from '../lib/types';
+import { stemParams } from '../lib/stemParams';
 import { memoryBudgetBytes, projectBytes } from '../audio/live/budget';
 import { getState, setState } from './store';
 
@@ -41,9 +42,8 @@ export function projectGrid(p: Project): Grid {
 
 export function applyStemParams(engine: AudioEngine, p: Project): void {
   engine.setMasterGain(p.masterGain ?? 1);
-  p.stems.forEach((s, i) =>
-    engine.setStem(i, { gain: s.gain, pan: s.pan, mute: s.muted, solo: s.solo }),
-  );
+  const { mode, liveMuted } = getState();
+  stemParams(p, mode, liveMuted).forEach((params, i) => engine.setStem(i, params));
 }
 
 const loading = new Map<string, Promise<void>>();

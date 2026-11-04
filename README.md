@@ -10,7 +10,9 @@ bridge and outro, as coloured blocks above the tracks. Then:
   it seamlessly, and export it as a WAV mix or a ZIP of per-track WAVs.
 - **Live**: big pads for each section. Tap one and it starts at the end of the current section, or at
   the next bar, with a clean cut or a fade over 1 beat, 2 beats or 1 bar (the new part still lands on
-  its downbeat at full volume; the same fade is used between the parts of an arrangement). Setlists load the next song in advance. Works with keyboard shortcuts and Bluetooth
+  its downbeat at full volume; the same fade is used between the parts of an arrangement).
+  Live is "super live": every track plays, whatever was muted or soloed in Practice. To mute a track
+  on stage, hold it for 3 seconds; tap it to unmute. Practice mutes come back when you leave Live. Setlists load the next song in advance. Works with keyboard shortcuts and Bluetooth
   page-turner pedals.
 
 Everything runs in the browser and is stored on the device. A small Python service only analyses audio

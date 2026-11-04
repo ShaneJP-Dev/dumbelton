@@ -135,7 +135,11 @@ export class AudioEngine {
   cancelJump(): void {
     this.send({ type: 'cancelJump' });
   }
+  /** Last track settings sent to the audio thread (for display and tests). */
+  readonly stemParams: Partial<StemParams>[] = [];
+
   setStem(index: number, params: Partial<StemParams>): void {
+    this.stemParams[index] = { ...this.stemParams[index], ...params };
     this.send({ type: 'stem', index, params });
   }
   setClick(params: Partial<ClickParams>): void {
