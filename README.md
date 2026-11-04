@@ -155,6 +155,12 @@ Each track's volume fader shows its level in dB: 0 dB is the 80 % mark, the fade
 the bottom is off (−∞). Tap the dB value to type an exact number (`-6`, `+2`, `-inf`), or double-click
 the fader to return to 0 dB. Exports use the same volumes.
 
+The **Master** fader in the bottom bar sets the whole song's level in dB at once. It's saved with
+each song, so loud and quiet songs in a setlist can be evened out. Next to it, the meter shows how loud
+the song is playing: green, then yellow above −12 dB, red near 0 dB. It also shows the recent peak and a
+**CLIP** light that stays on if the output went over 0 dB (tap it to reset). The app's click isn't
+affected by the master.
+
 ## How it works
 
 ```

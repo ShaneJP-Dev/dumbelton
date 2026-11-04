@@ -31,6 +31,8 @@ export class AudioEngine {
   private listeners = new Set<Listener>();
   private posListeners = new Set<() => void>();
   private loadWaiters = new Map<number, (songId: string) => void>();
+  private meterPeak: [number, number] = [0, 0];
+  private meterClip = false;
   /** Song id held in each slot (0, 1). */
   readonly slots: (string | null)[] = [null, null];
   activeSlot = -1;
@@ -73,6 +75,10 @@ export class AudioEngine {
     switch (m.type) {
       case 'pos':
         this.clock.update(m);
+        // keep the loudest value until the UI reads it (reports come faster than screen frames)
+        if (m.meter[0] > this.meterPeak[0]) this.meterPeak[0] = m.meter[0];
+        if (m.meter[1] > this.meterPeak[1]) this.meterPeak[1] = m.meter[1];
+        if (m.clip) this.meterClip = true;
         this.posListeners.forEach((l) => l());
         break;
       case 'event':
@@ -153,6 +159,19 @@ export class AudioEngine {
     const ctx = this.ctx as SinkContext;
     if (ctx.setSinkId && (ctx.sinkId ?? '') !== deviceId) await ctx.setSinkId(deviceId);
     return configureDestination(this.ctx);
+  }
+
+  /** Song level (peak L/R, linear) and clipping since the last call. */
+  readMeter(): { l: number; r: number; clip: boolean } {
+    const m = { l: this.meterPeak[0], r: this.meterPeak[1], clip: this.meterClip };
+    this.meterPeak = [0, 0];
+    this.meterClip = false;
+    return m;
+  }
+
+  /** Master level for the whole song (linear). */
+  setMasterGain(gain: number): void {
+    this.send({ type: 'master', gain });
   }
 
   setRouting(routing: Routing): void {

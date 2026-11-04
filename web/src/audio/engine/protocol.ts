@@ -24,6 +24,7 @@ export type ToWorklet =
   | { type: 'transition'; frames: number }
   | { type: 'routing'; routing: Routing }
   | { type: 'testTone'; channel: number }
+  | { type: 'master'; gain: number }
   | { type: 'grid'; grid: Grid };
 
 export interface PosReport {
@@ -35,6 +36,9 @@ export interface PosReport {
   time: number; // AudioContext time at the end of the reported block
   speed: number;
   songId: string | null;
+  /** Song level since the previous report: peak L/R (linear) of all tracks, and clipping on any output. */
+  meter: [number, number];
+  clip: boolean;
 }
 
 export type FromWorklet =

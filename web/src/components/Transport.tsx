@@ -7,6 +7,7 @@ import { peekEngine } from '../state/engine';
 import { setClick, setSpeed, syncProgram, togglePlay } from '../state/actions';
 import { setState, useApp } from '../state/store';
 import { Loop, Metronome, Pause, Play } from './icons';
+import { MasterSection } from './MasterSection';
 import { cx, formatTime, Toggle } from './ui';
 
 export const SPEEDS = [0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1];
@@ -70,6 +71,8 @@ export function Transport({ project, layout }: { project: Project; layout?: Layo
           {bpm} <span className="text-gray-500">BPM</span>
         </div>
       )}
+      <div className="mx-1 hidden h-8 w-px bg-white/10 sm:block" />
+      <MasterSection project={project} />
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {mode === 'practice' && (
           <Toggle

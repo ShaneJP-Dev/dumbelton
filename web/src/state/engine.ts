@@ -40,6 +40,7 @@ export function projectGrid(p: Project): Grid {
 }
 
 export function applyStemParams(engine: AudioEngine, p: Project): void {
+  engine.setMasterGain(p.masterGain ?? 1);
   p.stems.forEach((s, i) =>
     engine.setStem(i, { gain: s.gain, pan: s.pan, mute: s.muted, solo: s.solo }),
   );

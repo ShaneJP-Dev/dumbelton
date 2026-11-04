@@ -99,6 +99,9 @@ class EngineProcessor extends AudioWorkletProcessor {
       case 'testTone':
         core.testTone(m.channel);
         break;
+      case 'master':
+        core.setMasterGain(m.gain);
+        break;
       case 'grid':
         core.setGrid(m.grid);
         if (this.active >= 0 && this.slots[this.active]) this.slots[this.active]!.grid = m.grid;
@@ -109,6 +112,7 @@ class EngineProcessor extends AudioWorkletProcessor {
 
   private report(): void {
     const p = this.core.position;
+    const m = this.core.takeMeter();
     this.post({
       type: 'pos',
       frame: p.frame,
@@ -118,6 +122,8 @@ class EngineProcessor extends AudioWorkletProcessor {
       time: currentTime,
       speed: this.core.getSpeed(),
       songId: this.songId(),
+      meter: [m.l, m.r],
+      clip: m.clip,
     });
   }
 

@@ -42,6 +42,8 @@ export interface ExportRequest {
   speed: number;
   /** Fade length (frames) at arrangement joins, as in playback. */
   transition: number;
+  /** The song's master level (linear) for the mix. */
+  masterGain: number;
   click: boolean;
   mix: boolean;
   stemFiles: boolean;
@@ -111,6 +113,7 @@ scope.onmessage = async (e: MessageEvent<ExportRequest>) => {
     core.setStretcher(new LinkedWsola(SAMPLE_RATE));
     core.setSpeed(req.speed);
     core.setTransition(req.transition);
+    core.setMasterGain(req.masterGain);
 
     const dir = await exportsDir();
     // clear previous exports

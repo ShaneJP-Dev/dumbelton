@@ -37,6 +37,29 @@ async function importSong(page: Page, name: string) {
   await page.waitForURL(/#\/song\//);
 }
 
+/** Output level (RMS, dBFS) measured on the engine's output in the page. */
+const outputLevel = (page: Page, ms = 700) =>
+  page.evaluate(async (ms) => {
+    const w = window as unknown as { __engine: { ctx: AudioContext; node: AudioNode }; __an?: AnalyserNode };
+    if (!w.__an) {
+      w.__an = w.__engine.ctx.createAnalyser();
+      w.__an.fftSize = 2048;
+      w.__engine.node.connect(w.__an);
+    }
+    const a = w.__an;
+    const buf = new Float32Array(a.fftSize);
+    let sum = 0;
+    let n = 0;
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms) {
+      a.getFloatTimeDomainData(buf);
+      for (const v of buf) sum += v * v;
+      n += buf.length;
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    return 10 * Math.log10(sum / n + 1e-20);
+  }, ms);
+
 test.describe.serial('song workflow', () => {
   let page: Page;
   const truth = JSON.parse(readFileSync(resolve(SONG_DIR, 'structure.json'), 'utf8')) as Truth;
@@ -88,40 +111,19 @@ test.describe.serial('song workflow', () => {
   });
 
   test('a track volume in dB changes the audible level by that amount', async () => {
-    const outputDb = (ms = 700) =>
-      page.evaluate(async (ms) => {
-        const w = window as unknown as { __engine: { ctx: AudioContext; node: AudioNode }; __an?: AnalyserNode };
-        if (!w.__an) {
-          w.__an = w.__engine.ctx.createAnalyser();
-          w.__an.fftSize = 2048;
-          w.__engine.node.connect(w.__an);
-        }
-        const a = w.__an;
-        const buf = new Float32Array(a.fftSize);
-        let sum = 0;
-        let n = 0;
-        const t0 = performance.now();
-        while (performance.now() - t0 < ms) {
-          a.getFloatTimeDomainData(buf);
-          for (const v of buf) sum += v * v;
-          n += buf.length;
-          await new Promise((r) => setTimeout(r, 40));
-        }
-        return 10 * Math.log10(sum / n + 1e-20);
-      }, ms);
     const keys = page.getByTestId('track-header').filter({ hasText: 'keys' });
     await page.getByRole('button', { name: 'Solo keys' }).click();
     await page.locator('[data-testid=section][data-name="Verse 1"]').click();
     await page.getByTestId('play').click();
     await page.waitForTimeout(300);
-    const before = await outputDb();
+    const before = await outputLevel(page);
     await expect(keys.getByTestId('db-readout')).toHaveText('0.0 dB');
     await keys.getByTestId('db-readout').click();
     await keys.getByTestId('db-input').fill('-12');
     await keys.getByTestId('db-input').press('Enter');
     await expect(keys.getByTestId('db-readout')).toHaveText('\u221212.0 dB');
     await page.waitForTimeout(200);
-    const after = await outputDb();
+    const after = await outputLevel(page);
     expect(after - before).toBeGreaterThan(-13.5);
     expect(after - before).toBeLessThan(-10.5);
     await expect.poll(async () => (await project(page)).stems.find((s) => s.name === 'keys')?.gain).toBeCloseTo(0.2512, 3);
@@ -130,6 +132,31 @@ test.describe.serial('song workflow', () => {
     await expect(keys.getByTestId('db-readout')).toHaveText('0.0 dB');
     await page.getByTestId('play').click();
     await page.getByRole('button', { name: 'Solo keys' }).click();
+  });
+
+  test('the master fader sets the whole song level in dB, and the meter shows it', async () => {
+    const master = page.getByTestId('master');
+    await expect(master.getByTestId('db-readout')).toHaveText('0.0 dB');
+    await page.locator('[data-testid=section][data-name="Chorus 1"]').click();
+    await page.getByTestId('play').click();
+    await page.waitForTimeout(300);
+    const before = await outputLevel(page);
+    // the meter shows the song level while playing
+    await expect.poll(async () => Number(await page.getByTestId('level-meter').getAttribute('data-db'))).toBeGreaterThan(-40);
+    await master.getByTestId('db-readout').click();
+    await master.getByTestId('db-input').fill('-6');
+    await master.getByTestId('db-input').press('Enter');
+    await expect(master.getByTestId('db-readout')).toHaveText('\u22126.0 dB');
+    await page.waitForTimeout(200);
+    const after = await outputLevel(page);
+    expect(after - before).toBeGreaterThan(-7.5);
+    expect(after - before).toBeLessThan(-4.5);
+    await expect
+      .poll(async () => ((await project(page)) as unknown as { masterGain?: number }).masterGain ?? 1)
+      .toBeCloseTo(0.501, 2);
+    // stopped: the meter falls back to empty
+    await page.getByTestId('play').click();
+    await expect.poll(async () => Number(await page.getByTestId('level-meter').getAttribute('data-db')), { timeout: 6000 }).toBeLessThanOrEqual(-60);
   });
 
   test('an arrangement exports with the right length', async () => {
@@ -209,12 +236,15 @@ test.describe.serial('song workflow', () => {
     // tapping another song switches to it and stays in Live
     await list.locator('[data-testid=live-song][data-name="Second Song"]').click();
     await expect(page.locator('input[aria-label="Song name"]')).toHaveValue('Second Song');
+    // each song keeps its own master level (E2E Song was set to -6 dB earlier)
+    await expect(page.getByTestId('master').getByTestId('db-readout')).toHaveText('0.0 dB');
     await expect(page.getByTestId('live-panel')).toBeVisible();
     // pick the setlist and start it from its first song
     await list.getByTestId('song-list-picker').selectOption({ label: 'Setlist 1 (2)' });
     await list.locator('[data-testid=live-song][data-name="E2E Song"]').click();
     await expect(page.locator('input[aria-label="Song name"]')).toHaveValue('E2E Song');
     await expect(list.getByTestId('next-song')).toHaveText(/Next: Second Song/);
+    await expect(page.getByTestId('master').getByTestId('db-readout')).toHaveText('\u22126.0 dB');
     await expect(list.locator('[data-testid=live-song][data-name="E2E Song"]')).toContainText('Now');
   });
 

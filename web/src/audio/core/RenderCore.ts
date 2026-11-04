@@ -115,6 +115,14 @@ export class RenderCore {
     this.fill(m, bufs, pos, off);
 
   private click: ClickParams = { enabled: false, gain: 0.7 };
+  /** Master level for the whole song (all tracks; not the app's click). */
+  private masterGain = 1;
+  // song meter: peak of the summed tracks (L/R) since the last takeMeter(), and clipping on any output
+  private busL = new Float32Array(0);
+  private busR = new Float32Array(0);
+  private meterL = 0;
+  private meterR = 0;
+  private clipped = false;
   private routing: Routing = stereoRouting(0);
   // test tone (to find a channel on the desk); plays even when stopped
   private toneCh = -1;
@@ -214,6 +222,27 @@ export class RenderCore {
 
   setClick(p: Partial<ClickParams>): void {
     this.click = { ...this.click, ...p };
+  }
+
+  /** Master level for the whole song (linear, up to +6 dB). Applies to every track on every output. */
+  setMasterGain(g: number): void {
+    this.masterGain = Math.max(0, Math.min(1.9953, g));
+  }
+
+  getMasterGain(): number {
+    return this.masterGain;
+  }
+
+  /**
+   * The song's level since the last call: peak of all tracks summed (L/R, after
+   * their faders and the master), and whether any output went over 0 dBFS. Resets.
+   */
+  takeMeter(): { l: number; r: number; clip: boolean } {
+    const m = { l: this.meterL, r: this.meterR, clip: this.clipped };
+    this.meterL = 0;
+    this.meterR = 0;
+    this.clipped = false;
+    return m;
   }
 
   /** Where each stem and the click go. Channels outside the rendered outputs are ignored. */
@@ -418,6 +447,8 @@ export class RenderCore {
     this.stemBuf = Array.from({ length: stems }, () => [new Float32Array(cap), new Float32Array(cap)]);
     this.tmpL = new Float32Array(cap);
     this.tmpR = new Float32Array(cap);
+    this.busL = new Float32Array(cap);
+    this.busR = new Float32Array(cap);
     this.srcPos = new Float64Array(cap);
     this.cap = cap;
   }
@@ -598,6 +629,11 @@ export class RenderCore {
     const nOut = outs.length;
     const tL = this.tmpL;
     const tR = this.tmpR;
+    const busL = this.busL;
+    const busR = this.busR;
+    busL.fill(0, 0, n);
+    busR.fill(0, 0, n);
+    const mg = this.masterGain;
     for (let s = 0; s < stems.length; s++) {
       const [bl, br] = this.stemBuf[s];
       if (stemOuts && stemOuts[s]) {
@@ -606,8 +642,8 @@ export class RenderCore {
       }
       const p = this.params[s];
       const audible = !p.mute && (!anySolo || p.solo);
-      const tl = audible ? p.gain * (p.pan > 0 ? 1 - p.pan : 1) : 0;
-      const tr = audible ? p.gain * (p.pan < 0 ? 1 + p.pan : 1) : 0;
+      const tl = audible ? p.gain * mg * (p.pan > 0 ? 1 - p.pan : 1) : 0;
+      const tr = audible ? p.gain * mg * (p.pan < 0 ? 1 + p.pan : 1) : 0;
       let gL = this.gl[s];
       let gR = this.gr[s];
       if (gL === tl && gR === tr) {
@@ -625,6 +661,10 @@ export class RenderCore {
         }
         this.gl[s] = gL;
         this.gr[s] = gR;
+      }
+      for (let i = 0; i < n; i++) {
+        busL[i] += tL[i];
+        busR[i] += tR[i];
       }
       const dests = this.routing.stems[s] ?? STEREO_DEST;
       for (const d of dests) {
@@ -646,6 +686,33 @@ export class RenderCore {
     }
     this.renderClick(outs, n);
     this.applyMaster(outs, n);
+    this.measure(outs, n);
+  }
+
+  private measure(outs: Float32Array[], n: number): void {
+    let pl = 0;
+    let pr = 0;
+    for (let i = 0; i < n; i++) {
+      const a = Math.abs(this.busL[i]);
+      const b = Math.abs(this.busR[i]);
+      if (a > pl) pl = a;
+      if (b > pr) pr = b;
+    }
+    // the play/pause ramp scales what is heard; use its level at the end of the block
+    pl *= this.master;
+    pr *= this.master;
+    if (pl > this.meterL) this.meterL = pl;
+    if (pr > this.meterR) this.meterR = pr;
+    if (!this.clipped) {
+      for (const o of outs) {
+        for (let i = 0; i < n; i++) {
+          if (o[i] > 1 || o[i] < -1) {
+            this.clipped = true;
+            return;
+          }
+        }
+      }
+    }
   }
 
   private applyMaster(outs: Float32Array[], n: number): void {

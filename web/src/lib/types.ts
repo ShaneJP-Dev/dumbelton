@@ -72,6 +72,8 @@ export interface Project {
   sections: Section[];
   arrangements: Arrangement[];
   analysis: AnalysisState;
+  /** Master level for the whole song (linear, 1 = 0 dB). Missing = 0 dB. */
+  masterGain?: number;
 }
 
 export interface SetlistEntry {

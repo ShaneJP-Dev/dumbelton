@@ -63,6 +63,7 @@ export function exportProgram(
         solo: s.solo,
       })),
       grid: { beats: project.beats, downbeats: project.downbeats },
+      masterGain: project.masterGain ?? 1,
       program,
       ...opts,
     };
