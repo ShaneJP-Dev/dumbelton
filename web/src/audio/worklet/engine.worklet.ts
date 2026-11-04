@@ -93,6 +93,12 @@ class EngineProcessor extends AudioWorkletProcessor {
       case 'transition':
         core.setTransition(m.frames);
         break;
+      case 'routing':
+        core.setRouting(m.routing);
+        break;
+      case 'testTone':
+        core.testTone(m.channel);
+        break;
       case 'grid':
         core.setGrid(m.grid);
         if (this.active >= 0 && this.slots[this.active]) this.slots[this.active]!.grid = m.grid;

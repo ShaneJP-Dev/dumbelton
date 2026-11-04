@@ -106,8 +106,8 @@ scope.onmessage = async (e: MessageEvent<ExportRequest>) => {
     const length = Math.max(...req.stems.map((s) => s.length));
     const core = new RenderCore(SAMPLE_RATE);
     core.setSong({ id: req.songId, length, stems }, req.grid);
-    req.stems.forEach((s, i) => core.setStem(i, { gain: s.gain, pan: s.pan, mute: s.muted, solo: s.solo, bus: 'main' }));
-    core.setClick({ enabled: req.click, bus: 'main' });
+    req.stems.forEach((s, i) => core.setStem(i, { gain: s.gain, pan: s.pan, mute: s.muted, solo: s.solo }));
+    core.setClick({ enabled: req.click });
     core.setStretcher(new LinkedWsola(SAMPLE_RATE));
     core.setSpeed(req.speed);
     core.setTransition(req.transition);

@@ -6,6 +6,7 @@ import { setState, useApp } from './state/store';
 import { LibraryView } from './views/LibraryView';
 import { SongView } from './views/SongView';
 import { SetlistsView, SetlistView } from './views/SetlistsView';
+import { OutputsView } from './views/OutputsView';
 
 export default function App() {
   const route = useApp((s) => s.route);
@@ -30,6 +31,7 @@ export default function App() {
       {route.name === 'song' && <SongView id={route.id} />}
       {route.name === 'setlists' && <SetlistsView />}
       {route.name === 'setlist' && <SetlistView id={route.id} />}
+      {route.name === 'outputs' && <OutputsView />}
       <ToastHost />
     </div>
   );

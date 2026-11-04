@@ -41,7 +41,7 @@ export function renderProgram(
     let lastReport = 0;
     while (!ended && done < exact && done < cap) {
       let n = Math.min(block, exact - done);
-      core.render(main, n, null, stemOuts);
+      core.render(main, n, stemOuts);
       if (ended && exact === Infinity) {
         // trim the silent remainder of the last block
         let last = n - 1;

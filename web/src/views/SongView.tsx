@@ -45,6 +45,9 @@ function SongMenu({ onAddTracks }: { onAddTracks: () => void }) {
           <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-white/10" onClick={() => { setOpen(false); onAddTracks(); }}>
             <Plus size={16} /> Add tracks
           </button>
+          <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-white/10" onClick={() => { setOpen(false); navigate({ name: 'outputs' }); }}>
+            Outputs (Dante, channels)…
+          </button>
           <button
             type="button"
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm text-red-300 hover:bg-white/10"

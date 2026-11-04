@@ -75,7 +75,48 @@ The browser features the app relies on (AudioWorklet and its private file storag
 certificate, or a tunnel) and open that address. On iPad, add the page to the Home Screen so Safari
 does not evict stored songs after 7 days without use.
 
-### Better section names (optional)
+### Using Dante (multi-channel outputs)
+
+The app can send click, guide and each instrument to its own channel, for the sound desk and the band's
+in-ears. It plays into any multi-channel sound card. For Dante, use **Dante Virtual Soundcard** (DVS) on
+a Mac:
+
+1. In DVS, set the sample rate to **48 kHz** (the app's rate) and the channel count to 16 or 32, then
+   start it.
+2. Open the app in **Chrome or Edge** and go to **Outputs** (on the Songs page, or in a song's menu).
+   Choose "Dante Virtual Soundcard" as the output device. Device names appear after you allow the
+   microphone prompt; nothing is recorded. In Safari, choose DVS in System Settings → Sound instead.
+3. Choose **Multitrack**. Tracks go to channel groups by their names, and the layout is saved in this
+   browser:
+
+   | Group | Track names containing | Channels |
+   | --- | --- | --- |
+   | Click (plus the app's click and count-in) | click, metronome, count | 1 |
+   | Guide | guide, cue | 2 |
+   | Drums | drum, kick, snare, perc, hat, tom, loop | 3–4 |
+   | Bass | bass, sub, 808 | 5 |
+   | Keys | key, piano, rhodes, organ, synth, pad | 6–7 |
+   | Guitars | gtr, guitar, ag, eg | 8–9 |
+   | Vocals | vox, vocal, voice, bgv, choir | 10–11 |
+   | Other | anything else | 12–13 |
+
+   Change channels, keywords and mono/stereo, add groups, optionally send a stereo mix (without click and
+   guide) to two more channels, and pin a song's track to a different group under **This song**.
+4. Press **Test** on each group and check the beep arrives where you expect in Dante Controller and on
+   the desk.
+
+Browsers send up to 32 channels. In Multitrack mode the sound goes to the desk, not the laptop's
+speakers.
+
+For a reliable service:
+- **Use a dedicated laptop, plugged into power.** Turn on Do Not Disturb, close other apps, and turn off
+  Chrome's Memory Saver for this site.
+- **Use wired Ethernet for Dante**, never Wi-Fi.
+- **Check DVS's latency setting.** The default suits most networks; raise it if you hear dropouts on a
+  busy network.
+- **Rehearse with the full setlist once** before relying on it.
+
+
 
 The default analyzer (`librosa`) is fast and needs no machine-learning models. It finds boundaries
 reliably and labels sections with musical heuristics: the loudest repeated part is the chorus, and so

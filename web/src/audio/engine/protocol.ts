@@ -1,6 +1,6 @@
 import type { CompactStem } from '../core/StemBlocks';
 import type { ClickParams } from '../core/RenderCore';
-import type { CoreEvent, Frame, Grid, Program, Quantize, StemParams } from '../core/types';
+import type { CoreEvent, Frame, Grid, Program, Quantize, Routing, StemParams } from '../core/types';
 
 export interface WireSong {
   id: string;
@@ -22,6 +22,8 @@ export type ToWorklet =
   | { type: 'click'; params: Partial<ClickParams> }
   | { type: 'speed'; speed: number }
   | { type: 'transition'; frames: number }
+  | { type: 'routing'; routing: Routing }
+  | { type: 'testTone'; channel: number }
   | { type: 'grid'; grid: Grid };
 
 export interface PosReport {

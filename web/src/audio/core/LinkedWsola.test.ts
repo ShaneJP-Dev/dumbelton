@@ -27,7 +27,7 @@ function render(core: RenderCore, frames: number, nStems: number, block = 128) {
   const mainL: number[] = [];
   for (let done = 0; done < frames; done += block) {
     const n = Math.min(block, frames - done);
-    core.render(main, n, null, so);
+    core.render(main, n, so);
     for (let s = 0; s < nStems; s++) for (let i = 0; i < n; i++) stems[s].push(so[s][0][i]);
     for (let i = 0; i < n; i++) mainL.push(main[0][i]);
   }

@@ -1,4 +1,4 @@
-import type { Bus, Frame } from '../audio/core/types';
+import type { Frame } from '../audio/core/types';
 
 export type SectionKind =
   | 'intro'
@@ -28,7 +28,8 @@ export interface Stem {
   pan: number;
   muted: boolean;
   solo: boolean;
-  bus: Bus;
+  /** Output group this track is pinned to (multitrack outputs); unset = chosen by its name. */
+  output?: string;
   inAnalysisMix: boolean;
 }
 

@@ -74,6 +74,9 @@ export function LibraryView() {
           <Button variant="ghost" onClick={() => navigate({ name: 'setlists' })}>
             <ListIcon size={16} /> Setlists
           </Button>
+          <Button variant="ghost" onClick={() => navigate({ name: 'outputs' })} data-testid="outputs-link">
+            Outputs
+          </Button>
           <Button variant="primary" onClick={() => startImport([])} data-testid="new-song">
             <Plus size={16} /> New song
           </Button>

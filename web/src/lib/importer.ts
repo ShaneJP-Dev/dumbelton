@@ -84,7 +84,6 @@ async function importStems(
         pan: 0,
         muted: false,
         solo: false,
-        bus: 'main',
         inAnalysisMix: !isGuideStem(name),
       });
     }

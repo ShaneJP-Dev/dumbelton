@@ -217,6 +217,89 @@ test.describe.serial('song workflow', () => {
     await expect(list.getByTestId('next-song')).toHaveText(/Next: Second Song/);
     await expect(list.locator('[data-testid=live-song][data-name="E2E Song"]')).toContainText('Now');
   });
+
+  test('multitrack outputs: each group lands on its own channels', async () => {
+    // per-channel peak levels of the engine's 32 outputs
+    const levels = () =>
+      page.evaluate(async () => {
+        const w = window as unknown as { __engine: { ctx: AudioContext; node: AudioNode }; __an32?: AnalyserNode[] };
+        if (!w.__an32) {
+          const split = w.__engine.ctx.createChannelSplitter(32);
+          w.__engine.node.connect(split);
+          w.__an32 = Array.from({ length: 32 }, (_, k) => {
+            const a = w.__engine.ctx.createAnalyser();
+            a.fftSize = 2048;
+            split.connect(a, k);
+            return a;
+          });
+        }
+        const peak = new Array(32).fill(0);
+        const buf = new Float32Array(2048);
+        for (let t = 0; t < 12; t++) {
+          w.__an32.forEach((a, k) => {
+            a.getFloatTimeDomainData(buf);
+            for (const v of buf) peak[k] = Math.max(peak[k], Math.abs(v));
+          });
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        return peak as number[];
+      });
+    const engine = (fn: string, arg?: number) =>
+      page.evaluate(([f, a]) => {
+        const e = (window as unknown as { __engine: Record<string, (x?: number) => void> }).__engine;
+        e[f as string](a as number | undefined);
+      }, [fn, arg] as const);
+
+    await page.goto('/');
+    await page.getByTestId('song-card').filter({ hasText: 'E2E Song' }).click();
+    await page.waitForURL(/#\/song\//);
+    const songId = decodeURIComponent(page.url().split('#/song/')[1]);
+    // wait until the audio engine has this song loaded (it opens in Live while a setlist runs)
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __engine?: { activeSongId: string | null } }).__engine?.activeSongId ?? null))
+      .toBe(songId);
+    await page.goto('/#/outputs');
+    await page.getByTestId('mode-multitrack').click();
+    const routes = page.getByTestId('song-routing');
+    await routes.getByLabel('Song').selectOption({ label: 'E2E Song' });
+    const ch = (track: string) => routes.locator(`[data-testid=song-route][data-track="${track}"]`).getAttribute('data-channels');
+    expect([await ch('click'), await ch('drums'), await ch('bass'), await ch('keys'), await ch('lead')]).toEqual(['1', '3–4', '5', '6–7', '12–13']);
+
+    // play the first chorus (all instruments) and look at every output channel
+    await engine('seek', 48000 * 26);
+    await engine('play');
+    let peak = await levels();
+    const on = (k: number) => peak[k] > 0.01;
+    expect([2, 3, 4, 5, 6, 11, 12].filter(on)).toEqual([2, 3, 4, 5, 6, 11, 12]); // drums, bass, keys, lead (Other)
+    // click (muted in an earlier test), guide (none), guitars, vocals and unused channels are silent
+    expect([0, 1, 7, 8, 9, 10, 13, 14, 20, 31].filter(on)).toEqual([]);
+    // the app's own click goes to the Click channel (1)
+    await page.evaluate(() =>
+      (window as unknown as { __engine: { setClick(p: object): void } }).__engine.setClick({ enabled: true, gain: 1 }),
+    );
+    peak = await levels();
+    expect(on(0)).toBe(true);
+    expect(on(1)).toBe(false);
+    await page.evaluate(() => (window as unknown as { __engine: { setClick(p: object): void } }).__engine.setClick({ enabled: false }));
+
+    // move Bass to channel 14
+    await page.getByLabel('Bass first channel').fill('14');
+    await expect.poll(() => ch('bass')).toBe('14');
+    await page.waitForTimeout(150);
+    peak = await levels();
+    expect(peak[13]).toBeGreaterThan(0.01);
+    expect(peak[4]).toBe(0);
+
+    // test tone on the Guide channel (2), with playback stopped
+    await engine('pause');
+    await page.waitForTimeout(200);
+    await page.getByTestId('test-guide').click();
+    peak = await levels();
+    expect(peak[1]).toBeGreaterThan(0.1);
+    expect(peak[0]).toBe(0);
+
+    await page.getByTestId('mode-stereo').click();
+  });
 });
 
 test('without the analyzer, sections can be marked by hand and added anywhere', async ({ page }) => {

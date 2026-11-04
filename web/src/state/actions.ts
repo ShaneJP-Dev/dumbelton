@@ -4,6 +4,7 @@ import { deleteProjectData } from '../lib/importer';
 import type { Project, Section, Setlist } from '../lib/types';
 import { addSectionAt, snapFrame } from '../lib/sections';
 import { fadeFrames, saveFade, type FadeBeats } from '../lib/fade';
+import { buildRouting, saveSetup, type OutputSetup } from '../lib/outputs';
 import { barLength } from '../audio/core/grid';
 import { SAMPLE_RATE } from '../audio/core/types';
 import type { Program } from '../audio/core/types';
@@ -18,6 +19,7 @@ export function routeFromHash(hash: string): Route {
   if (a === 'song' && b) return { name: 'song', id: decodeURIComponent(b) };
   if (a === 'setlists') return { name: 'setlists' };
   if (a === 'setlist' && b) return { name: 'setlist', id: decodeURIComponent(b) };
+  if (a === 'outputs') return { name: 'outputs' };
   return { name: 'library' };
 }
 
@@ -29,6 +31,8 @@ export function hashFor(r: Route): string {
       return '#/setlists';
     case 'setlist':
       return `#/setlist/${encodeURIComponent(r.id)}`;
+    case 'outputs':
+      return '#/outputs';
     default:
       return '#/';
   }
@@ -186,6 +190,7 @@ export async function openProject(id: string, opts: { keepMode?: boolean } = {})
     engine.setClick({ enabled: getState().click });
     engine.setSpeed(getState().speed);
     syncTransition();
+    syncRouting();
     syncProgram();
   } catch (err) {
     setState({ engineError: String((err as Error).message ?? err) });
@@ -232,6 +237,31 @@ export function syncTransition(): void {
   const engine = peekEngine();
   const { current, fade } = getState();
   if (engine && current && engine.activeSongId === current.id) engine.setTransition(fadeFrames(current, fade));
+}
+
+/** Send the output routing for the open song's tracks to the engine. */
+export function syncRouting(): void {
+  const engine = peekEngine();
+  const { current, outputs } = getState();
+  if (engine && current && engine.activeSongId === current.id) engine.setRouting(buildRouting(outputs, current.stems));
+}
+
+/** Change (and save) the output setup; switches the device if it changed. */
+export async function setOutputs(next: OutputSetup): Promise<void> {
+  const prev = getState().outputs;
+  setState({ outputs: next });
+  saveSetup(next);
+  syncRouting();
+  if (next.deviceId !== prev.deviceId) {
+    const engine = peekEngine();
+    if (engine) {
+      try {
+        setState({ outputChannels: await engine.setOutputDevice(next.deviceId) });
+      } catch (err) {
+        toast(`Could not use that output: ${(err as Error).message}`, 'error');
+      }
+    }
+  }
 }
 
 export function setFade(fade: FadeBeats): void {

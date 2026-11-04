@@ -1,12 +1,24 @@
 import workletUrl from '../worklet/engine.worklet.ts?worker&url';
 import type { ClickParams } from '../core/RenderCore';
-import type { CoreEvent, Frame, Grid, Program, Quantize, StemParams } from '../core/types';
-import { SAMPLE_RATE } from '../core/types';
+import type { CoreEvent, Frame, Grid, Program, Quantize, Routing, StemParams } from '../core/types';
+import { MAX_OUTPUTS, SAMPLE_RATE } from '../core/types';
 import { PositionClock } from './PositionClock';
 import type { FromWorklet, ToWorklet, WireSong } from './protocol';
 import { configureAudioSession, keepAlive } from './session';
 
 type Listener = (e: CoreEvent, songId: string | null) => void;
+
+type SinkContext = AudioContext & { setSinkId?: (id: string) => Promise<void>; sinkId?: string };
+
+/** Use as many output channels as the device offers (up to 32), one-to-one, no up/down-mixing. */
+function configureDestination(ctx: AudioContext): number {
+  const d = ctx.destination;
+  const n = Math.max(1, Math.min(MAX_OUTPUTS, d.maxChannelCount || 2));
+  d.channelCount = n;
+  d.channelCountMode = 'explicit';
+  d.channelInterpretation = 'discrete';
+  return n;
+}
 
 /**
  * Main-thread handle on the audio engine. Create it from a user gesture.
@@ -34,11 +46,15 @@ export class AudioEngine {
     configureAudioSession();
     const ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' });
     await ctx.audioWorklet.addModule(workletUrl);
+    // Always render 32 channels; the destination keeps as many as the device has
+    // (a stereo device simply gets channels 1-2).
     const node = new AudioWorkletNode(ctx, 'musical-engine', {
       numberOfInputs: 0,
       numberOfOutputs: 1,
-      outputChannelCount: [2],
+      outputChannelCount: [MAX_OUTPUTS],
+      channelInterpretation: 'discrete',
     });
+    configureDestination(ctx);
     node.connect(ctx.destination);
     keepAlive(ctx);
     if (ctx.state !== 'running') await ctx.resume().catch(() => undefined);
@@ -122,6 +138,33 @@ export class AudioEngine {
   setSpeed(speed: number): void {
     this.send({ type: 'speed', speed });
   }
+  /** Output channels the current device takes (2 for ordinary speakers, up to 32). */
+  get outputChannels(): number {
+    return this.ctx.destination.channelCount;
+  }
+
+  /** Whether the browser can choose the output device in-app (Chrome, Edge). */
+  get canChooseDevice(): boolean {
+    return typeof (this.ctx as SinkContext).setSinkId === 'function';
+  }
+
+  /** Send audio to a device ('' = system default). Returns the channels it takes. */
+  async setOutputDevice(deviceId: string): Promise<number> {
+    const ctx = this.ctx as SinkContext;
+    if (ctx.setSinkId && (ctx.sinkId ?? '') !== deviceId) await ctx.setSinkId(deviceId);
+    return configureDestination(this.ctx);
+  }
+
+  setRouting(routing: Routing): void {
+    this.send({ type: 'routing', routing });
+  }
+
+  /** Short beep on one output channel (0-based), to find it on the desk. */
+  testTone(channel: number): void {
+    if (this.ctx.state !== 'running') void this.ctx.resume();
+    this.send({ type: 'testTone', channel });
+  }
+
   /** Fade length (frames) for jumps between parts and arrangement joins. */
   setTransition(frames: number): void {
     this.send({ type: 'transition', frames });

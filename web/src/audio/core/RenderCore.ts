@@ -4,13 +4,14 @@ import {
   RAMP_FRAMES,
   SAMPLE_RATE,
   XFADE_FRAMES,
-  type Bus,
+  stereoRouting,
   type CoreEvent,
   type CorePosition,
   type Frame,
   type Grid,
   type Program,
   type Quantize,
+  type Routing,
   type SongPcm,
   type StemParams,
 } from './types';
@@ -28,7 +29,8 @@ import type { Stretcher } from './LinkedWsola';
  *                the Program (segments, loops, queued jumps) with equal-power
  *                crossfades at every discontinuity.
  *   stretch   -> optional linked WSOLA (same splice points for all stems).
- *   mix       -> per-stem gain/pan/mute/solo ramps, click track, play/pause ramp.
+ *   mix       -> per-stem gain/pan/mute/solo ramps, routed to output channels
+ *                (stereo pairs or single channels), click, play/pause ramp.
  */
 
 type State = 'stopped' | 'playing' | 'stopping' | 'countIn';
@@ -52,13 +54,14 @@ interface Pending {
 export interface ClickParams {
   enabled: boolean;
   gain: number;
-  bus: Bus;
 }
+
+const STEREO_DEST = [{ l: 0, r: 1 }];
 
 /** Max backward/forward move of the source position that is a stretcher splice, not a jump. */
 const SPLICE_TOLERANCE = 6000;
 
-const DEFAULT_PARAMS: StemParams = { gain: 1, pan: 0, mute: false, solo: false, bus: 'main' };
+const DEFAULT_PARAMS: StemParams = { gain: 1, pan: 0, mute: false, solo: false };
 const HALF_PI = Math.PI / 2;
 
 function makeClick(freq: number, sampleRate: number, ms = 25): Float32Array {
@@ -111,7 +114,12 @@ export class RenderCore {
   private readonly pull = (m: number, bufs: Float32Array[][], pos: Float64Array, off: number) =>
     this.fill(m, bufs, pos, off);
 
-  private click: ClickParams = { enabled: false, gain: 0.7, bus: 'main' };
+  private click: ClickParams = { enabled: false, gain: 0.7 };
+  private routing: Routing = stereoRouting(0);
+  // test tone (to find a channel on the desk); plays even when stopped
+  private toneCh = -1;
+  private toneLeft = 0;
+  private tonePhase = 0;
   private clickHi: Float32Array;
   private clickLo: Float32Array;
   private clickBuf: Float32Array | null = null;
@@ -145,6 +153,7 @@ export class RenderCore {
     this.params = Array.from({ length: n }, () => ({ ...DEFAULT_PARAMS }));
     this.gl = new Float64Array(n);
     this.gr = new Float64Array(n);
+    this.routing = stereoRouting(n);
     this.cap = 0;
     this.ensureCapacity(1024);
     this.setGrid(grid);
@@ -205,6 +214,22 @@ export class RenderCore {
 
   setClick(p: Partial<ClickParams>): void {
     this.click = { ...this.click, ...p };
+  }
+
+  /** Where each stem and the click go. Channels outside the rendered outputs are ignored. */
+  setRouting(r: Routing): void {
+    this.routing = { stems: r.stems.map((d) => d.slice()), click: r.click.slice() };
+  }
+
+  getRouting(): Routing {
+    return this.routing;
+  }
+
+  /** A short 1 kHz beep on one output channel (0-based), even when stopped. */
+  testTone(channel: number, seconds = 0.6): void {
+    this.toneCh = channel;
+    this.toneLeft = Math.round(seconds * this.sampleRate);
+    this.tonePhase = 0;
   }
 
   /**
@@ -345,32 +370,23 @@ export class RenderCore {
   // ---------------------------------------------------------------- render
 
   /**
-   * Render n frames. main = [L, R]; cue = [L, R] or null (cue-bus stems and the
-   * click then go to main). stemOuts[s] = [L, R] receives each stem's raw
-   * (pre-gain) signal, used by export.
+   * Render n frames into the output channels `outs` (2 for stereo, up to
+   * MAX_OUTPUTS), following the routing. stemOuts[s] = [L, R] receives each
+   * stem's raw (pre-gain) signal, used by export.
    */
-  render(
-    main: Float32Array[],
-    n: number,
-    cue: Float32Array[] | null = null,
-    stemOuts: Float32Array[][] | null = null,
-  ): void {
-    main[0].fill(0, 0, n);
-    main[1].fill(0, 0, n);
-    if (cue) {
-      cue[0].fill(0, 0, n);
-      cue[1].fill(0, 0, n);
-    }
+  render(outs: Float32Array[], n: number, stemOuts: Float32Array[][] | null = null): void {
+    for (const o of outs) o.fill(0, 0, n);
     if (stemOuts) for (const so of stemOuts) {
       so[0].fill(0, 0, n);
       so[1].fill(0, 0, n);
     }
+    if (this.toneLeft > 0) this.renderTone(outs, n);
     const song = this.song;
     if (!song || this.state === 'stopped') return;
     this.ensureCapacity(n);
 
     if (this.state === 'countIn') {
-      this.renderCountIn(main, cue, n);
+      this.renderCountIn(outs, n);
       return;
     }
 
@@ -382,7 +398,7 @@ export class RenderCore {
       this.fill(n, this.stemBuf, this.srcPos, 0);
     }
     this.lastOut = this.srcPos[n - 1];
-    this.mix(main, cue, stemOuts, n);
+    this.mix(outs, stemOuts, n);
   }
 
   // ---------------------------------------------------------------- internals
@@ -574,11 +590,14 @@ export class RenderCore {
     return n;
   }
 
-  private mix(main: Float32Array[], cue: Float32Array[] | null, stemOuts: Float32Array[][] | null, n: number): void {
+  private mix(outs: Float32Array[], stemOuts: Float32Array[][] | null, n: number): void {
     const song = this.song!;
     const stems = song.stems;
     const anySolo = this.params.some((p) => p.solo);
     const step = 1 / RAMP_FRAMES;
+    const nOut = outs.length;
+    const tL = this.tmpL;
+    const tR = this.tmpR;
     for (let s = 0; s < stems.length; s++) {
       const [bl, br] = this.stemBuf[s];
       if (stemOuts && stemOuts[s]) {
@@ -589,46 +608,57 @@ export class RenderCore {
       const audible = !p.mute && (!anySolo || p.solo);
       const tl = audible ? p.gain * (p.pan > 0 ? 1 - p.pan : 1) : 0;
       const tr = audible ? p.gain * (p.pan < 0 ? 1 + p.pan : 1) : 0;
-      const dest = p.bus === 'cue' && cue ? cue : main;
-      const [ol, or] = dest;
       let gL = this.gl[s];
       let gR = this.gr[s];
       if (gL === tl && gR === tr) {
         if (gL === 0 && gR === 0) continue;
         for (let i = 0; i < n; i++) {
-          ol[i] += bl[i] * gL;
-          or[i] += br[i] * gR;
+          tL[i] = bl[i] * gL;
+          tR[i] = br[i] * gR;
         }
       } else {
         for (let i = 0; i < n; i++) {
           gL = gL < tl ? Math.min(tl, gL + step) : Math.max(tl, gL - step);
           gR = gR < tr ? Math.min(tr, gR + step) : Math.max(tr, gR - step);
-          ol[i] += bl[i] * gL;
-          or[i] += br[i] * gR;
+          tL[i] = bl[i] * gL;
+          tR[i] = br[i] * gR;
         }
         this.gl[s] = gL;
         this.gr[s] = gR;
       }
+      const dests = this.routing.stems[s] ?? STEREO_DEST;
+      for (const d of dests) {
+        if ('ch' in d) {
+          if (d.ch < 0 || d.ch >= nOut) continue;
+          const o = outs[d.ch];
+          for (let i = 0; i < n; i++) o[i] += 0.5 * (tL[i] + tR[i]);
+        } else {
+          if (d.l >= 0 && d.l < nOut) {
+            const o = outs[d.l];
+            for (let i = 0; i < n; i++) o[i] += tL[i];
+          }
+          if (d.r >= 0 && d.r < nOut) {
+            const o = outs[d.r];
+            for (let i = 0; i < n; i++) o[i] += tR[i];
+          }
+        }
+      }
     }
-    this.renderClick(main, cue, n);
-    this.applyMaster(main, cue, n);
+    this.renderClick(outs, n);
+    this.applyMaster(outs, n);
   }
 
-  private applyMaster(main: Float32Array[], cue: Float32Array[] | null, n: number): void {
+  private applyMaster(outs: Float32Array[], n: number): void {
     const target = this.state === 'playing' ? 1 : 0;
     let m = this.master;
     if (m === target && m === 1) return;
     const step = 1 / RAMP_FRAMES;
-    const [l, r] = main;
+    const ramp = this.tmpL; // reuse scratch: per-frame master gain
     for (let i = 0; i < n; i++) {
       m = m < target ? Math.min(target, m + step) : Math.max(target, m - step);
-      l[i] *= m;
-      r[i] *= m;
-      if (cue) {
-        cue[0][i] *= m;
-        cue[1][i] *= m;
-      }
+      ramp[i] = m;
     }
+    for (const o of outs) for (let i = 0; i < n; i++) o[i] *= ramp[i];
     this.master = m;
     if (this.state === 'stopping' && m === 0) {
       this.state = 'stopped';
@@ -651,9 +681,28 @@ export class RenderCore {
     this.lastSrc = this.pos - 1;
   }
 
-  private renderClick(main: Float32Array[], cue: Float32Array[] | null, n: number): void {
+  private addClickSample(outs: Float32Array[], i: number, v: number): void {
+    const chans = this.routing.click;
+    for (let k = 0; k < chans.length; k++) {
+      const c = chans[k];
+      if (c >= 0 && c < outs.length) outs[c][i] += v;
+    }
+  }
+
+  private renderTone(outs: Float32Array[], n: number): void {
+    const ch = this.toneCh;
+    const total = Math.round(0.6 * this.sampleRate);
+    const fade = 480;
+    const w = (2 * Math.PI * 1000) / this.sampleRate;
+    for (let i = 0; i < n && this.toneLeft > 0; i++, this.toneLeft--) {
+      const t = this.tonePhase++;
+      const env = Math.min(1, t / fade, this.toneLeft / fade);
+      if (ch >= 0 && ch < outs.length && t < total * 10) outs[ch][i] += 0.25 * env * Math.sin(w * t);
+    }
+  }
+
+  private renderClick(outs: Float32Array[], n: number): void {
     const beats = this.beats;
-    const dest = this.click.bus === 'cue' && cue ? cue : main;
     const tol = SPLICE_TOLERANCE;
     for (let i = 0; i < n; i++) {
       const p = this.srcPos[i];
@@ -675,9 +724,7 @@ export class RenderCore {
         }
       }
       if (this.clickBuf) {
-        const v = this.clickBuf[this.clickIdx++] * this.click.gain;
-        dest[0][i] += v;
-        dest[1][i] += v;
+        this.addClickSample(outs, i, this.clickBuf[this.clickIdx++] * this.click.gain);
         if (this.clickIdx >= this.clickBuf.length) this.clickBuf = null;
       }
     }
@@ -703,8 +750,7 @@ export class RenderCore {
     this.master = 1;
   }
 
-  private renderCountIn(main: Float32Array[], cue: Float32Array[] | null, n: number): void {
-    const dest = this.click.bus === 'cue' && cue ? cue : main;
+  private renderCountIn(outs: Float32Array[], n: number): void {
     let i = 0;
     for (; i < n && this.countInLeft > 0; i++) {
       const t = this.countInLen - this.countInLeft;
@@ -714,9 +760,7 @@ export class RenderCore {
         this.countInBeatIdx++;
       }
       if (this.clickBuf) {
-        const v = this.clickBuf[this.clickIdx++] * Math.max(this.click.gain, 0.5);
-        dest[0][i] += v;
-        dest[1][i] += v;
+        this.addClickSample(outs, i, this.clickBuf[this.clickIdx++] * Math.max(this.click.gain, 0.5));
         if (this.clickIdx >= this.clickBuf.length) this.clickBuf = null;
       }
       this.countInLeft--;

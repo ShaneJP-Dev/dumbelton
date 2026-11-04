@@ -21,7 +21,7 @@ function run(core: RenderCore, frames: number, nStems = 2, block = 128) {
   const b = buffers(block, nStems);
   for (let done = 0; done < frames; done += block) {
     const n = Math.min(block, frames - done);
-    core.render(b.main, n, null, b.stemOuts);
+    core.render(b.main, n, b.stemOuts);
     for (let s = 0; s < nStems; s++) for (let i = 0; i < n; i++) out[s].push(b.stemOuts[s][0][i]);
     for (let i = 0; i < n; i++) mainL.push(b.main[0][i]);
   }

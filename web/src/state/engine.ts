@@ -3,7 +3,7 @@ import { loadWireSong } from '../audio/import/pcmStore';
 import type { Grid } from '../audio/core/types';
 import type { Project } from '../lib/types';
 import { memoryBudgetBytes, projectBytes } from '../audio/live/budget';
-import { getState } from './store';
+import { getState, setState } from './store';
 
 let enginePromise: Promise<AudioEngine> | null = null;
 let engineInstance: AudioEngine | null = null;
@@ -11,8 +11,16 @@ let engineInstance: AudioEngine | null = null;
 /** Create (once) and return the audio engine. Call from a user gesture where possible. */
 export function getEngine(): Promise<AudioEngine> {
   if (!enginePromise) {
-    enginePromise = AudioEngine.create().then((e) => {
+    enginePromise = AudioEngine.create().then(async (e) => {
       engineInstance = e;
+      // use the saved output device (e.g. Dante Virtual Soundcard) and learn its channel count
+      let channels = e.outputChannels;
+      try {
+        channels = await e.setOutputDevice(getState().outputs.deviceId);
+      } catch {
+        /* device gone: stay on the default output */
+      }
+      setState({ outputChannels: channels });
       if (import.meta.env.DEV || import.meta.env.MODE === 'test' || (window as { __e2e?: boolean }).__e2e) {
         (window as unknown as { __engine: AudioEngine }).__engine = e;
       }
@@ -33,7 +41,7 @@ export function projectGrid(p: Project): Grid {
 
 export function applyStemParams(engine: AudioEngine, p: Project): void {
   p.stems.forEach((s, i) =>
-    engine.setStem(i, { gain: s.gain, pan: s.pan, mute: s.muted, solo: s.solo, bus: s.bus }),
+    engine.setStem(i, { gain: s.gain, pan: s.pan, mute: s.muted, solo: s.solo }),
   );
 }
 

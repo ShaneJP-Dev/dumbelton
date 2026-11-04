@@ -48,14 +48,28 @@ export interface Grid {
   downbeats: Frame[];
 }
 
-export type Bus = 'main' | 'cue';
-
 export interface StemParams {
   gain: number; // linear
-  pan: number; // -1..1
+  pan: number; // -1..1 (applies to stereo destinations)
   mute: boolean;
   solo: boolean;
-  bus: Bus;
+}
+
+/** Most output channels the engine renders (Chrome sends up to 32 to one device). */
+export const MAX_OUTPUTS = 32;
+
+/** Where audio goes: a stereo pair, or one channel (a stereo stem is summed to mono). 0-based. */
+export type Dest = { l: number; r: number } | { ch: number };
+
+/** Output routing: destinations for each stem (a stem may feed several) and the click's channels. */
+export interface Routing {
+  stems: Dest[][];
+  click: number[];
+}
+
+/** Everything on output channels 1-2. */
+export function stereoRouting(stems: number): Routing {
+  return { stems: Array.from({ length: stems }, () => [{ l: 0, r: 1 }]), click: [0, 1] };
 }
 
 export interface CorePosition {
