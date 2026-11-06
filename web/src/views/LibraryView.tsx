@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { SAMPLE_RATE } from '../audio/core/types';
+import { BackupDialog } from '../components/BackupDialog';
 import { DropZone, ImportDialog } from '../components/ImportDialog';
 import { filesFromDrop } from '../lib/audioFiles';
 import { ListIcon, Plus, Trash } from '../components/icons';
@@ -49,10 +50,17 @@ function SongCard({ p }: { p: Project }) {
   );
 }
 
+/** The other address people commonly use (pnpm dev on :5173 vs pnpm start on :8000). */
+function otherAddress(): string {
+  const { protocol, port } = window.location;
+  return `${protocol}//localhost:${port === '5173' ? '8000' : '5173'}`;
+}
+
 export function LibraryView() {
   const projects = useApp((s) => s.projects);
   const [importOpen, setImportOpen] = useState(false);
   const [dropped, setDropped] = useState<{ files: File[]; folder: string | null }>({ files: [], folder: null });
+  const [backup, setBackup] = useState<null | 'all' | 'restore'>(null);
 
   const startImport = (files: File[], folder: string | null = null) => {
     setDropped({ files, folder });
@@ -68,14 +76,17 @@ export function LibraryView() {
         void filesFromDrop(e.dataTransfer).then(({ files, folder }) => files.length && startImport(files, folder));
       }}
     >
-      <header className="mb-6 flex items-center gap-3">
+      <header className="mb-6 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold tracking-tight">Songs</h1>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button variant="ghost" onClick={() => navigate({ name: 'setlists' })}>
             <ListIcon size={16} /> Setlists
           </Button>
           <Button variant="ghost" onClick={() => navigate({ name: 'outputs' })} data-testid="outputs-link">
             Outputs
+          </Button>
+          <Button variant="ghost" onClick={() => setBackup('all')} data-testid="backup-link">
+            Back up &amp; restore
           </Button>
           <Button variant="primary" onClick={() => startImport([])} data-testid="new-song">
             <Plus size={16} /> New song
@@ -89,6 +100,16 @@ export function LibraryView() {
             straight away, and can loop, slow down, rearrange and play it live.
           </p>
           <DropZone onFiles={startImport} />
+          <div className="mt-6 rounded-xl bg-white/5 p-4 text-sm text-gray-300" data-testid="where-songs">
+            <p>
+              Songs are saved in this browser, at this address (<b>{window.location.origin}</b>). If you added songs at another
+              address (for example <b>{otherAddress()}</b>) or in another browser, open that one to find them, or bring them
+              here with a backup file.
+            </p>
+            <Button className="mt-3" onClick={() => setBackup('restore')} data-testid="restore-from-empty">
+              Restore from a backup
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -97,6 +118,12 @@ export function LibraryView() {
           ))}
         </div>
       )}
+      {projects.length > 0 && (
+        <p className="mt-8 text-center text-xs text-gray-500">
+          Saved in this browser at {window.location.origin}. Use Back up &amp; restore to keep a copy or move songs to another computer.
+        </p>
+      )}
+      <BackupDialog open={backup !== null} focus={backup === 'restore' ? 'restore' : undefined} onClose={() => setBackup(null)} />
       <ImportDialog
         open={importOpen}
         onClose={() => setImportOpen(false)}

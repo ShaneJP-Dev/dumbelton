@@ -431,3 +431,75 @@ test('choosing only .asd files explains where the audio is', async ({ page }) =>
   await expect(page.getByTestId('skipped-note')).toContainText('choose the audio files next to them');
   await expect(page.getByTestId('import')).toBeDisabled();
 });
+
+test('songs move to another browser with a backup file', async ({ browser }, testInfo) => {
+  test.setTimeout(240_000);
+  const ctx1 = await browser.newContext();
+  const p1 = await ctx1.newPage();
+  await importSong(p1, 'Backup Song');
+  await expect(p1.getByTestId('section')).toHaveCount(8, { timeout: 120_000 });
+  // change the arrangement so we can check it travels with the song
+  await p1.getByRole('button', { name: 'Arrange', exact: true }).click();
+  await expect(p1.getByTestId('arr-item')).toHaveCount(8);
+  await p1.getByRole('button', { name: 'Remove Bridge', exact: true }).click();
+  await expect(p1.getByTestId('arr-item')).toHaveCount(7);
+  await p1.waitForTimeout(600); // edits are saved after a short delay
+  await p1.goto('/');
+  await p1.getByTestId('backup-link').click();
+  await p1.getByTestId('make-backup').click();
+  const [download] = await Promise.all([p1.waitForEvent('download'), p1.getByTestId('save-backup').click()]);
+  expect(download.suggestedFilename()).toMatch(/^Musical backup \d{4}-\d{2}-\d{2}\.tar$/);
+  const file = testInfo.outputPath('backup.tar');
+  await download.saveAs(file);
+  await ctx1.close();
+
+  // a different, empty browser profile
+  const ctx2 = await browser.newContext();
+  const p2 = await ctx2.newPage();
+  await p2.goto('/');
+  await expect(p2.getByTestId('where-songs')).toContainText('Songs are saved in this browser');
+  await p2.getByTestId('restore-from-empty').click();
+  await p2.getByTestId('restore-input').setInputFiles(file);
+  await expect(p2.getByTestId('restore-result')).toContainText('Restored 1 song: Backup Song.', { timeout: 60_000 });
+  await p2.getByRole('button', { name: 'Done' }).click();
+  await p2.getByTestId('song-card').filter({ hasText: 'Backup Song' }).click();
+  await expect(p2.getByTestId('section')).toHaveCount(8);
+
+  // audio arrived intact (same sizes as recorded), waveforms came along, and it plays
+  const check = await p2.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((res) => {
+      const r = indexedDB.open('musical');
+      r.onsuccess = () => res(r.result);
+    });
+    const all = <T,>(store: string) =>
+      new Promise<T[]>((res) => {
+        db.transaction(store).objectStore(store).getAll().onsuccess = (e) => res((e.target as IDBRequest).result);
+      });
+    const [p] = await all<{ id: string; stems: { id: string; bytes: number }[] }>('projects');
+    const peaks = await all<{ stemId: string }>('peaks');
+    const dir = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('songs')).getDirectoryHandle(p.id);
+    const sizesMatch = await Promise.all(
+      p.stems.map(async (s) => (await (await dir.getFileHandle(`${s.id}.pcm`)).getFile()).size === s.bytes),
+    );
+    return { stems: p.stems.length, peaks: peaks.length, sizesMatch };
+  });
+  expect(check.stems).toBe(5);
+  expect(check.peaks).toBe(5);
+  expect(check.sizesMatch.every(Boolean)).toBe(true);
+  await p2.getByTestId('play').click();
+  await expect
+    .poll(() => p2.evaluate(() => (window as unknown as { __engine: { clock: { report: { frame: number } } } }).__engine.clock.report.frame))
+    .toBeGreaterThan(48000);
+  await p2.getByTestId('play').click();
+  await p2.getByRole('button', { name: 'Arrange', exact: true }).click();
+  await expect(p2.getByTestId('arr-item')).toHaveCount(7);
+
+  // restoring the same file again changes nothing
+  await p2.goto('/');
+  await p2.getByTestId('backup-link').click();
+  await p2.getByTestId('restore-input').setInputFiles(file);
+  await expect(p2.getByTestId('restore-result')).toContainText('1 already here');
+  await p2.getByRole('button', { name: 'Done' }).click();
+  await expect(p2.getByTestId('song-card')).toHaveCount(1);
+  await ctx2.close();
+});

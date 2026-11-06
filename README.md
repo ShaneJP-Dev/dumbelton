@@ -43,6 +43,19 @@ Then open http://localhost:8000. `pnpm start` builds the app and runs one server
 analysis service. The first start takes a few minutes while uv downloads Python and librosa. The first
 song after a restart is analysed about 30 s more slowly while the analyzer warms up.
 
+### Your songs, backups and moving to another computer
+
+Songs are saved **in the browser, per address**. http://localhost:8000 (`pnpm start`) and
+http://localhost:5173 (`pnpm dev`) are separate places, and so are Chrome and Safari. If your songs
+seem to be missing, open the address and browser you used when you added them.
+
+To keep a safe copy, or move songs to another computer (such as the church Mac), use **Back up &
+restore** on the Songs page:
+- **Back up** saves the chosen songs into one file: their audio, sections, arrangements, volumes and
+  the setlists that use them. It's a standard `.tar` file.
+- **Restore** adds the songs and setlists from a backup file. Songs that are already there are left as
+  they are, so restoring twice does no harm.
+
 ### Importing stems
 
 Choose the stem files, choose a whole folder, or drag a folder onto the page. M4A, WAV, MP3, FLAC,
