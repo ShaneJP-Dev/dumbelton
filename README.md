@@ -24,11 +24,11 @@ You need [Node 22](https://nodejs.org) with pnpm (`corepack enable`), and [uv](h
 uv fetches Python 3.11 and the analysis libraries itself.
 
 ```bash
-git clone -b claude/inspiring-planck-o3882y https://github.com/SudoVault-Software/musical-app.git
+git clone https://github.com/ShaneJP-Dev/dumbelton.git
 ```
 
 ```bash
-cd musical-app
+cd dumbelton
 ```
 
 ```bash
