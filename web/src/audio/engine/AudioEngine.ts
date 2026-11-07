@@ -142,7 +142,11 @@ export class AudioEngine {
     this.stemParams[index] = { ...this.stemParams[index], ...params };
     this.send({ type: 'stem', index, params });
   }
+  /** Last click settings sent to the audio thread (for tests). */
+  readonly clickParams: Partial<ClickParams> = {};
+
   setClick(params: Partial<ClickParams>): void {
+    Object.assign(this.clickParams, params);
     this.send({ type: 'click', params });
   }
   setSpeed(speed: number): void {

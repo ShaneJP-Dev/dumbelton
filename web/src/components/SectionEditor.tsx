@@ -141,6 +141,11 @@ export function SectionEditor({ project }: { project: Project }) {
         </span>
       )}
       <div className="ml-auto flex items-center gap-2">
+        {analysis.status === 'done' && analysis.source === 'guide' && (
+          <span className="text-xs text-gray-400" title="Placed and named from what the guide track says" data-testid="from-guide">
+            From guide cues
+          </span>
+        )}
         <SnapPicker />
         <Button variant="ghost" onClick={reanalyse} disabled={running} title="Find sections again">
           {running ? <Spinner /> : <Wand size={16} />} {running ? `${Math.round((analysis.progress ?? 0) * 100)}%` : 'Re-analyse'}

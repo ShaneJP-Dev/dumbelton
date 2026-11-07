@@ -77,6 +77,8 @@ export async function goToSetlistIndex(setlistId: string, index: number): Promis
     liveArrangementId: entry.arrangementId ?? null,
     liveEnded: false,
     liveMuted: [],
+    // the next song of a running set keeps its group mutes; starting Live fresh clears them
+    ...(getState().mode === 'live' ? {} : { liveMutedGroups: [], liveMuteAll: false }),
     mode: 'live',
   });
   navigate({ name: 'song', id: entry.projectId });
@@ -86,7 +88,15 @@ export async function goToSetlistIndex(setlistId: string, index: number): Promis
 export async function goToSongLive(projectId: string): Promise<void> {
   if (getState().current?.id === projectId && !getState().live) return;
   (await getEngine()).pause();
-  setState({ live: null, liveArrangementId: null, liveEnded: false, liveMuted: [], mode: 'live', keepModeOnOpen: true });
+  setState({
+    live: null,
+    liveArrangementId: null,
+    liveEnded: false,
+    liveMuted: [],
+    ...(getState().mode === 'live' ? {} : { liveMutedGroups: [], liveMuteAll: false }),
+    mode: 'live',
+    keepModeOnOpen: true,
+  });
   navigate({ name: 'song', id: projectId });
 }
 

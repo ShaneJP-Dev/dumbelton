@@ -33,7 +33,7 @@ class Job:
 
 
 class JobManager:
-    def __init__(self, run: Callable[[str, Callable[[float], None]], dict], max_jobs: int = 100):
+    def __init__(self, run: Callable[[str, Callable[[float], None], str | None], dict], max_jobs: int = 100):
         self._run = run
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
@@ -44,28 +44,28 @@ class JobManager:
         if self._pool is None:
             self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="analyze")
 
-    def submit(self, audio_path: str) -> Job:
+    def submit(self, audio_path: str, guide_path: str | None = None) -> Job:
         job = Job(id=uuid.uuid4().hex)
         with self._lock:
             self._jobs[job.id] = job
             self._prune()
         self.start()
         assert self._pool is not None
-        self._pool.submit(self._work, job, audio_path)
+        self._pool.submit(self._work, job, audio_path, guide_path)
         return job
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def _work(self, job: Job, audio_path: str) -> None:
+    def _work(self, job: Job, audio_path: str, guide_path: str | None = None) -> None:
         job.status = "running"
 
         def progress(p: float) -> None:
             job.progress = max(job.progress, min(1.0, p))
 
         try:
-            job.result = self._run(audio_path, progress)
+            job.result = self._run(audio_path, progress, guide_path)
             job.progress = 1.0
             job.status = "done"
         except Exception as exc:  # noqa: BLE001 - report any failure to the client
@@ -73,10 +73,12 @@ class JobManager:
             job.error = f"{type(exc).__name__}: {exc}"
             job.status = "error"
         finally:
-            try:
-                os.unlink(audio_path)
-            except OSError:
-                pass
+            for p in (audio_path, guide_path):
+                if p:
+                    try:
+                        os.unlink(p)
+                    except OSError:
+                        pass
 
     def _prune(self) -> None:
         if len(self._jobs) <= self._max_jobs:

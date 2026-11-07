@@ -12,3 +12,4 @@ analyzer/.cache/
 testdata/
 *.log
 .DS_Store
+analyzer/models/

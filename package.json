@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "pnpm --filter web dev",
     "analyzer": "uv run --directory analyzer uvicorn app.main:app --host 127.0.0.1 --port 8000",
+    "models": "uv run --directory analyzer python -m app.speech download",
     "build": "pnpm --filter web build",
     "start": "pnpm build && uv run --directory analyzer uvicorn app.main:app --host 127.0.0.1 --port 8000",
     "test": "pnpm --filter web test && uv run --directory analyzer pytest -q",

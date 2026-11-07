@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { M4A_DIR, SONG_DIR } from './global-setup';
 
@@ -324,17 +324,25 @@ test.describe.serial('song workflow', () => {
     await page.getByTestId('mode-stereo').click();
   });
 
-  test('Live starts with nothing muted, and muting a track there needs a 3-second hold', async () => {
-    const mutes = () =>
-      page.evaluate(() =>
-        (window as unknown as { __engine: { stemParams: { mute?: boolean }[] } }).__engine.stemParams.map((p) => !!p.mute),
-      );
+  test('Live starts with nothing muted; tap a track or group to mute it, hold Mute all for 2 seconds', async () => {
+    type E = { __engine: { stemParams: { mute?: boolean }[]; clickParams: { enabled?: boolean } } };
+    const mutes = () => page.evaluate(() => (window as unknown as E).__engine.stemParams.map((p) => !!p.mute));
+    const clickPlays = () => page.evaluate(() => !!(window as unknown as E).__engine.clickParams.enabled);
+    const holdFor = async (target: ReturnType<typeof page.locator>, ms: number) => {
+      const box = (await target.boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.waitForTimeout(ms);
+      await page.mouse.up();
+    };
     await page.goto('/');
     await page.getByTestId('song-card').filter({ hasText: 'E2E Song' }).click();
     await page.getByRole('button', { name: 'Practice', exact: true }).click();
     await page.getByRole('button', { name: 'Mute drums' }).click();
     await expect(page.getByRole('button', { name: 'Mute click' })).toHaveAttribute('aria-pressed', 'true'); // from an earlier test
     await expect.poll(async () => (await mutes()).filter(Boolean).length).toBe(2);
+    await page.getByTitle('Click track from the beat grid').click(); // the app's own click on
+    await expect.poll(clickPlays).toBe(true);
 
     // Live: everything plays
     await page.getByRole('button', { name: 'Live', exact: true }).click();
@@ -342,32 +350,59 @@ test.describe.serial('song workflow', () => {
     await expect(chips).toHaveCount(5);
     await expect.poll(mutes).toEqual([false, false, false, false, false]);
     const names = await chips.evaluateAll((els) => els.map((e) => e.getAttribute('data-name')));
+    const only = (...muted: string[]) => names.map((n) => muted.includes(n!));
     const drums = page.locator('[data-testid=live-track][data-name="drums"]');
-    const box = (await drums.boundingBox())!;
-    const holdFor = async (ms: number) => {
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.down();
-      await page.waitForTimeout(ms);
-      await page.mouse.up();
-    };
-    // a short press does nothing
-    await holdFor(1000);
-    await expect(drums).toHaveAttribute('data-muted', 'false');
-    expect((await mutes())[names.indexOf('drums')]).toBe(false);
-    // a 3-second hold mutes
-    await holdFor(3300);
+
+    // a tap mutes a track, another tap unmutes it
+    await drums.click();
     await expect(drums).toHaveAttribute('data-muted', 'true');
-    await expect.poll(async () => (await mutes())[names.indexOf('drums')]).toBe(true);
-    // a tap unmutes
+    await expect.poll(mutes).toEqual(only('drums'));
     await drums.click();
     await expect(drums).toHaveAttribute('data-muted', 'false');
-    await expect.poll(async () => (await mutes())[names.indexOf('drums')]).toBe(false);
+    await expect.poll(mutes).toEqual(only());
+
+    // groups come from the Outputs screen ("lead" matches no group, so it is in Other)
+    const groups = page.getByTestId('live-group');
+    expect(await groups.evaluateAll((els) => els.map((e) => e.getAttribute('data-group')))).toEqual(['click', 'drums', 'bass', 'keys', 'other']);
+    const group = (id: string) => page.locator(`[data-testid=live-group][data-group="${id}"]`);
+    await group('drums').click();
+    await expect.poll(mutes).toEqual(only('drums'));
+    await expect(drums).toHaveAttribute('data-muted', 'true');
+    await expect(drums).toContainText('Drums muted');
+    // the Click group silences the click track and the app's click
+    await group('click').click();
+    await expect.poll(mutes).toEqual(only('drums', 'click'));
+    await expect.poll(clickPlays).toBe(false);
+    await group('click').click();
+    await expect.poll(mutes).toEqual(only('drums'));
+    await expect.poll(clickPlays).toBe(true);
+
+    // Mute all: a short press does nothing, a 2-second hold silences everything
+    const all = page.getByTestId('live-mute-all');
+    await holdFor(all, 800);
+    await expect(all).toHaveAttribute('data-muted', 'false');
+    expect(await mutes()).toEqual(only('drums'));
+    await holdFor(all, 2400);
+    await expect(all).toHaveAttribute('data-muted', 'true');
+    await expect.poll(mutes).toEqual([true, true, true, true, true]);
+    await expect.poll(clickPlays).toBe(false);
+    // a tap brings back exactly what was playing (the Drums group stays muted)
+    await all.click();
+    await expect(all).toHaveAttribute('data-muted', 'false');
+    await expect.poll(mutes).toEqual(only('drums'));
+    await expect.poll(clickPlays).toBe(true);
 
     // back in Practice the song's own mutes return
     await page.getByRole('button', { name: 'Practice', exact: true }).click();
-    await expect.poll(async () => (await mutes())[names.indexOf('drums')]).toBe(true);
-    expect((await mutes())[names.indexOf('click')]).toBe(true);
+    await expect.poll(mutes).toEqual(only('drums', 'click'));
+    // and opening Live again starts with nothing muted
+    await page.getByRole('button', { name: 'Live', exact: true }).click();
+    await expect.poll(mutes).toEqual(only());
+    await expect(group('drums')).toHaveAttribute('data-muted', 'false');
+
+    await page.getByRole('button', { name: 'Practice', exact: true }).click();
     await page.getByRole('button', { name: 'Mute drums' }).click();
+    await page.getByTitle('Click track from the beat grid').click();
   });
 });
 
@@ -402,6 +437,56 @@ test('without the analyzer, sections can be marked by hand and added anywhere', 
   const box = (await last.boundingBox())!;
   await last.dblclick({ position: { x: box.width / 2, y: box.height / 2 } });
   await expect(page.getByTestId('section')).toHaveCount(4);
+});
+
+test('a guide track is sent with the mix, and its spoken cues place the sections', async ({ page }, testInfo) => {
+  const truth = JSON.parse(readFileSync(resolve(SONG_DIR, 'structure.json'), 'utf8')) as Truth & { duration: number };
+  let body = '';
+  await page.route('**/api/jobs', async (route) => {
+    body = route.request().postDataBuffer()?.toString('latin1') ?? '';
+    await route.fulfill({ status: 202, json: { id: 'guide-job' } });
+  });
+  const beats = Array.from({ length: Math.floor(truth.duration / 0.5) }, (_, i) => i * 0.5);
+  await page.route('**/api/jobs/guide-job', (route) =>
+    route.fulfill({
+      json: {
+        id: 'guide-job',
+        status: 'done',
+        progress: 1,
+        result: {
+          backend: 'librosa',
+          duration: truth.duration,
+          bpm: 120,
+          beats,
+          downbeats: beats.filter((_, i) => i % 4 === 0),
+          sections: truth.sections.map((s) => ({ start: s.start, end: s.end, label: s.kind })),
+          sectionsFrom: 'guide',
+          guide: {
+            status: 'ok',
+            language: 'es',
+            cues: truth.sections.slice(1).map((s) => ({ time: s.start - 2, end: s.start - 1.6, kind: s.kind, word: s.kind, conf: 1 })),
+          },
+        },
+      },
+    }),
+  );
+  // the click file stands in for a guide track
+  const guide = testInfo.outputPath('guide.wav');
+  mkdirSync(dirname(guide), { recursive: true });
+  copyFileSync(resolve(SONG_DIR, 'click.wav'), guide);
+  const files = [...STEMS.filter((f) => !f.endsWith('click.wav')), guide];
+  await page.goto('/');
+  await page.getByTestId('new-song').click();
+  await page.getByRole('dialog').getByTestId('file-input').setInputFiles(files);
+  await page.getByTestId('song-name').fill('Guide Song');
+  await page.getByTestId('import').click();
+  await page.waitForURL(/#\/song\//);
+
+  await expect(page.getByText(/Sections placed from the guide track's spoken cues \(7 cues, Spanish\)/)).toBeVisible({ timeout: 30_000 });
+  expect(body).toContain('name="audio"; filename="mix.wav"');
+  expect(body).toContain('name="guide"; filename="guide.wav"');
+  await expect(page.getByTestId('section')).toHaveCount(truth.sections.length);
+  await expect(page.getByTestId('from-guide')).toBeVisible();
 });
 
 test('imports m4a stems from a folder, skipping Ableton .asd files', async ({ page }) => {

@@ -9,6 +9,7 @@ import librosa
 import numpy as np
 
 from .postprocess import postprocess
+from .speech import read_guide
 from .types import RawAnalysis
 
 ONSET_SR = 22050
@@ -39,11 +40,27 @@ def detect_onsets(path: str) -> np.ndarray:
     return librosa.frames_to_time(frames, sr=sr, hop_length=ONSET_HOP)
 
 
-def analyze_file(path: str, backend: str | None = None, progress: Callable[[float], None] | None = None) -> dict:
+def analyze_file(
+    path: str,
+    backend: str | None = None,
+    progress: Callable[[float], None] | None = None,
+    guide_path: str | None = None,
+    transcriber=None,
+) -> dict:
+    """Analyse a mix. With `guide_path` (the guide track alone), its spoken cues place the sections."""
     report = progress or (lambda _p: None)
     report(0.05)
     raw = get_backend(backend)(path)
-    report(0.85)
+    report(0.7 if guide_path else 0.85)
+    guide = read_guide(guide_path, transcriber) if guide_path else None
+    report(0.9)
     onsets = detect_onsets(path)
     report(0.95)
-    return postprocess(raw, onsets)
+    cues = guide["cues"] if guide and guide["status"] == "ok" else None
+    result = postprocess(raw, onsets, cues)
+    if guide is not None:
+        if guide["status"] == "ok" and result["sectionsFrom"] != "guide":
+            guide["status"] = "few-cues"
+        guide["cues"] = [c.to_dict() for c in guide["cues"]]
+        result["guide"] = guide
+    return result

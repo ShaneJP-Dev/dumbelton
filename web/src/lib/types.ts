@@ -55,6 +55,8 @@ export interface Arrangement {
 export interface AnalysisState {
   status: 'none' | 'running' | 'done' | 'error';
   backend?: string;
+  /** Where the sections came from: the guide track's spoken cues, or the audio. */
+  source?: 'guide' | 'audio';
   error?: string;
   progress?: number;
 }

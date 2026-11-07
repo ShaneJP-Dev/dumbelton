@@ -1,8 +1,9 @@
 """HTTP API for song structure analysis.
 
-POST /api/jobs        multipart field `audio` -> {"id": ...}
+POST /api/jobs        multipart field `audio` (the mix), optional `guide`
+                      (the guide track alone: its spoken cues place sections) -> {"id": ...}
 GET  /api/jobs/{id}   -> {"id", "status", "progress", "result"?, "error"?}
-GET  /api/health      -> {"ok": true, "backend": ...}
+GET  /api/health      -> {"ok": true, "backend": ..., "speech": {"en": bool, "es": bool}}
 
 The built web app (web/dist, from `pnpm build`) is served from the same
 process when it exists, so one server on one port runs everything.
@@ -25,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .jobs import JobManager
 from .pipeline import analyze_file, backend_name, get_backend
+from .speech import models_status
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("analyzer")
@@ -61,7 +63,7 @@ async def lifespan(app: FastAPI):
     jobs.shutdown()
 
 
-jobs = JobManager(lambda path, progress: analyze_file(path, BACKEND, progress))
+jobs = JobManager(lambda path, progress, guide: analyze_file(path, BACKEND, progress, guide))
 app = FastAPI(title="musical-app analyzer", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
@@ -73,16 +75,16 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True, "backend": BACKEND}
+    return {"ok": True, "backend": BACKEND, "speech": models_status()}
 
 
-@app.post("/api/jobs", status_code=202)
-async def create_job(audio: UploadFile = File(...)) -> dict:
-    suffix = os.path.splitext(audio.filename or "")[1] or ".wav"
-    fd, path = tempfile.mkstemp(prefix="analyze-", suffix=suffix)
+async def _save_upload(upload: UploadFile, prefix: str) -> str | None:
+    """Write an upload to a temp file; None if it is empty. Raises 413 when too large."""
+    suffix = os.path.splitext(upload.filename or "")[1] or ".wav"
+    fd, path = tempfile.mkstemp(prefix=prefix, suffix=suffix)
     size = 0
     with os.fdopen(fd, "wb") as out:
-        while chunk := await audio.read(1 << 20):
+        while chunk := await upload.read(1 << 20):
             size += len(chunk)
             if size > MAX_UPLOAD_BYTES:
                 out.close()
@@ -91,8 +93,21 @@ async def create_job(audio: UploadFile = File(...)) -> dict:
             out.write(chunk)
     if size == 0:
         os.unlink(path)
+        return None
+    return path
+
+
+@app.post("/api/jobs", status_code=202)
+async def create_job(audio: UploadFile = File(...), guide: UploadFile | None = File(None)) -> dict:
+    path = await _save_upload(audio, "analyze-")
+    if path is None:
         raise HTTPException(400, "empty audio upload")
-    job = jobs.submit(path)
+    try:
+        guide_path = await _save_upload(guide, "guide-") if guide is not None else None
+    except HTTPException:
+        os.unlink(path)
+        raise
+    job = jobs.submit(path, guide_path)
     return {"id": job.id}
 
 

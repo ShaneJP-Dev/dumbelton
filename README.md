@@ -11,9 +11,13 @@ bridge and outro, as coloured blocks above the tracks. Then:
 - **Live**: big pads for each section. Tap one and it starts at the end of the current section, or at
   the next bar, with a clean cut or a fade over 1 beat, 2 beats or 1 bar (the new part still lands on
   its downbeat at full volume; the same fade is used between the parts of an arrangement).
-  Live is "super live": every track plays, whatever was muted or soloed in Practice. To mute a track
-  on stage, hold it for 3 seconds; tap it to unmute. Practice mutes come back when you leave Live. Setlists load the next song in advance. Works with keyboard shortcuts and Bluetooth
-  page-turner pedals.
+  Live is "super live": every track plays, whatever was muted or soloed in Practice (see
+  [Muting in Live](#muting-in-live)). Setlists load the next song in advance. Works with keyboard
+  shortcuts and Bluetooth page-turner pedals.
+
+If a song has a **guide track** that speaks the parts ("Intro", "Verse 2", "Chorus", or in Spanish
+"Verso", "Coro", "Puente"), the sections are placed and named from what it says. See
+[Guide cues](#guide-cues).
 
 Everything runs in the browser and is stored on the device. A small Python service only analyses audio
 to find beats and sections.
@@ -55,6 +59,42 @@ restore** on the Songs page:
   the setlists that use them. It's a standard `.tar` file.
 - **Restore** adds the songs and setlists from a backup file. Songs that are already there are left as
   they are, so restoring twice does no harm.
+
+### Guide cues
+
+Most multitrack guide tracks say the name of each part about a bar before it starts. When a song has
+one, the analyzer listens to it with [Vosk](https://alphacephei.com/vosk/) (offline speech
+recognition, no internet needed once set up) and uses the cues to place and name the sections. The
+audio analysis still finds the beats and bars, and is used for the sections when there is no guide or
+it says fewer than two parts.
+
+- **Which track is the guide:** the tracks in the **Guide** group on the Outputs screen (names with
+  guide, cue or cues, or tracks you pinned there), or else any track with "guide" in its name.
+- **Languages:** English and Spanish. Both are tried and the one that hears clearer cues wins, so
+  Spanish songs need nothing special.
+- **Words it understands:** intro, verse, pre-chorus, chorus, refrain, bridge, interlude, turnaround,
+  instrumental, solo, tag, vamp, breakdown, outro, ending; in Spanish intro, verso, estrofa, pre coro,
+  coro, puente, interludio, instrumental, solo, final. Counts ("2, 3, 4") are ignored, and repeated parts
+  are numbered automatically (Verse 1, Verse 2).
+- **Where a part starts:** on the first bar line after the cue (anything from just before beat 1 to beat
+  4 of the bar before counts).
+- **Set up once:** the two small speech models (about 40 MB each) download the first time a song with a
+  guide is analysed. To download them ahead of time, for example before taking the computer to church
+  where there may be no internet, run:
+
+  ```bash
+  pnpm models
+  ```
+
+  They are saved in `analyzer/models/`. If that download is blocked, download
+  [the English model](https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip) and
+  [the Spanish model](https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip) yourself and
+  unzip both into that folder.
+- **Check what it heard:** `uv run --directory analyzer python -m app.speech transcribe guide.wav`
+  prints every word and cue with its time.
+
+After analysis a message says whether the sections came from the guide. If a cue was missed, drag the
+section edges or use Add section, as usual. Re-analyse runs it again.
 
 ### Importing stems
 
@@ -152,6 +192,20 @@ analyzer missed, press **A** while the song plays, double-click the section bar,
 The new section starts at that point, on the nearest bar. If the analyzer is not running, songs still import
 and play, and you can mark sections by hand.
 
+### Muting in Live
+
+When you open Live, nothing is muted, whatever was muted or soloed in Practice. Practice mutes come
+back when you leave Live.
+
+- **Tap a track** to mute it, tap again to unmute.
+- **Tap a group** (Click, Guide, Drums, Bass, Keys, Guitars, Vocals, Other) to mute all its tracks. These
+  are the groups from the Outputs screen, so tracks join them by name and follow any changes you make
+  there. Muting **Click** also silences the app's own click.
+- **Mute all:** hold it for 2 seconds to silence everything, including the click. The song keeps playing
+  silently, so you can bring it back in time. Tap it to unmute; whatever was muted before stays muted.
+- Moving to the next song keeps group mutes and Mute all on (like mute groups on a desk). Track mutes
+  start fresh, because every song has different tracks.
+
 ## Keyboard
 
 | Key | Practice | Live |
@@ -191,6 +245,8 @@ web/                       React + TypeScript (Vite)
 analyzer/                  FastAPI service: POST /api/jobs, GET /api/jobs/{id}
   app/backends/            librosa (default) and allin1
   app/postprocess.py       onset-refined downbeats, snapping to bars, numbering ("Verse 2")
+  app/speech.py            guide track -> words with Vosk (grammar limited to cue words), model download
+  app/cues.py              words -> cues -> sections on downbeats
 scripts/make_test_song.py  synthetic multitrack song with a known structure (used by tests)
 ```
 
@@ -224,8 +280,13 @@ pnpm e2e
 
 runs the end-to-end tests (Playwright, Chromium). They start both servers and drive the app with a
 synthetic song: import, section detection, seek, loop, mute, arrangement export length, a Live
-quantised jump, working without the analyzer, and importing a folder of `.m4a` stems with their
-Ableton `.asd` files (that test needs ffmpeg to create the m4a files, and is skipped without it).
+quantised jump, Live track, group and mute-all mutes, sending a guide track, working without the
+analyzer, and importing a folder of `.m4a` stems with their Ableton `.asd` files (that test needs ffmpeg
+to create the m4a files, and is skipped without it).
+
+The guide-cue tests use a stand-in recogniser that "hears" words from tone pitches, so they check
+everything around Vosk (finding the spoken parts, timing, placing sections, choosing the language),
+but not real speech. One test runs real Vosk when the models are downloaded.
 
 The engine benchmark test requires 12 stereo stems at 0.5× speed to render at least 40× faster than
 real time (about 100× on a laptop).

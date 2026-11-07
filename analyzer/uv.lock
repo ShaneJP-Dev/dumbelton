@@ -11,6 +11,7 @@ name = "analyzer"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "certifi" },
     { name = "fastapi" },
     { name = "librosa", version = "0.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "librosa", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -22,6 +23,7 @@ dependencies = [
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "soundfile" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "vosk" },
 ]
 
 [package.dev-dependencies]
@@ -32,6 +34,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "certifi", specifier = ">=2024.2.2" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "librosa", specifier = ">=0.10" },
     { name = "numpy", specifier = ">=1.26" },
@@ -40,6 +43,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.11" },
     { name = "soundfile", specifier = ">=0.12" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+    { name = "vosk", specifier = "==0.3.44" },
 ]
 
 [package.metadata.requires-dev]
@@ -903,6 +907,12 @@ wheels = [
 ]
 
 [[package]]
+name = "srt"
+version = "3.5.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/b7/4a1bc231e0681ebf339337b0cd05b91dc6a0d701fa852bb812e244b7a030/srt-3.5.3.tar.gz", hash = "sha256:4884315043a4f0740fd1f878ed6caa376ac06d70e135f306a6dc44632eed0cc0", size = 28296, upload-time = "2023-03-28T02:35:44.007Z" }
+
+[[package]]
 name = "starlette"
 version = "1.10.0"
 source = { registry = "https://pypi.org/simple" }
@@ -922,6 +932,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/00/dc/6c58154c1c65f758ea979e7139cb76993a9cfc662d14e9be3c4a667cfb77/threadpoolctl-3.7.0.tar.gz", hash = "sha256:61348cfb77d53b9242e0017029244b559b810c142ced65b4e21eeca1843959a7", size = 31961, upload-time = "2026-09-15T15:46:20.263Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/43/3f/f88a53f60a472b46f4023f56d204dd7de33d34c5d2acbfa0d70a674e639e/threadpoolctl-3.7.0-py3-none-any.whl", hash = "sha256:cd8b60b5641b45c67bbf73c64c843235fc2d8a480c87389f52f5dbee893b86be", size = 26362, upload-time = "2026-09-15T15:46:19.168Z" },
+]
+
+[[package]]
+name = "tqdm"
+version = "4.70.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0d/ea/b2a5bd54b28a324dae8211928b2d730b6547500342c7e6c6dea08bd0a485/tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4", size = 171846, upload-time = "2026-09-11T07:25:16.601Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl", hash = "sha256:c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73", size = 80199, upload-time = "2026-09-11T07:25:14.599Z" },
 ]
 
 [[package]]
@@ -995,6 +1017,26 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/51/27/c1d2f9fa977f8f42ea294604166df10e0027e6dc6cd17f85ede386c9bf36/uvloop-0.23.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:090865d8ce7a03986755a3ce711b7dd0d4b44eb14ab74368b717f3fad1180208", size = 4532597, upload-time = "2026-10-01T03:15:47.258Z" },
     { url = "https://files.pythonhosted.org/packages/42/dd/2cb6a2c8a30ca55c07a882dd4ae4ceae0fa7d8c15b25b3b7cb9a4b6cf4ca/uvloop-0.23.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:bd6f2f81c7b9da99d301c0b16b82044e76fe887086e42e1590ecf520b94dbdac", size = 4230048, upload-time = "2026-10-01T03:15:49.119Z" },
     { url = "https://files.pythonhosted.org/packages/f4/52/29989cbaa4022dc4ef35c1dd60a4ab989e4c2065f341ed483ae71d2bd950/uvloop-0.23.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:a6ac96da66c35bf789bdcde78a88dc7d56b7907d8379648c54adc1c61594575d", size = 4394152, upload-time = "2026-10-01T03:15:50.829Z" },
+]
+
+[[package]]
+name = "vosk"
+version = "0.3.44"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi" },
+    { name = "requests" },
+    { name = "srt" },
+    { name = "tqdm" },
+    { name = "websockets" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/85/12/d8d3e842c088853632db6432b9b045c7798a477d390a25b4af1a89e5c164/vosk-0.3.44-py3-none-linux_armv7l.whl", hash = "sha256:a0d4a2c384692d721d4cda58aa79aac22edb0c445759e9ca2df61f44a5d2fdda", size = 2387663, upload-time = "2022-09-25T19:03:13.071Z" },
+    { url = "https://files.pythonhosted.org/packages/44/19/5e8299237bc2005c3d155d3b48adba6fd6484465ad5c970302fc1d37947d/vosk-0.3.44-py3-none-macosx_10_6_universal2.whl", hash = "sha256:029d0b3d6a5cff874c575b8a5814a4cccfb37608cff52e846c02a8c67a882801", size = 4710953, upload-time = "2022-09-25T19:11:57.513Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/80/7170893ae9d0616a16fa9637fb07f5bc5e5e4d954f280fff7a8f9b72b863/vosk-0.3.44-py3-none-manylinux2014_aarch64.whl", hash = "sha256:9995b7fa5434b134b4bd09897e2490dbc56115c2ad2943c030621e10c7037b34", size = 2368650, upload-time = "2022-09-25T19:04:00.751Z" },
+    { url = "https://files.pythonhosted.org/packages/26/c7/ed8a6ee755e18708770335a6d38b1e86f4838cdeaa85e92748a4e7431816/vosk-0.3.44-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:2652ef213c4c7807dc40af1e7aa578dcccfc4dc4192822a26bc45a9591bcbf76", size = 7173366, upload-time = "2022-09-25T19:04:03.886Z" },
+    { url = "https://files.pythonhosted.org/packages/71/7c/8850af1556646e7ae10a468ddfc255943bae0760f7e1d4abfac5ca802831/vosk-0.3.44-py3-none-win32.whl", hash = "sha256:93895a51b8bd7b4c780eef05a3d99bf2af03f02fe5f4e4bba3da17bd0fd69138", size = 8594246, upload-time = "2022-09-25T19:04:06.509Z" },
+    { url = "https://files.pythonhosted.org/packages/73/11/4c967c41f482bb081d1b8c1e578ed5f28ae17939422de313ceb42d2523a4/vosk-0.3.44-py3-none-win_amd64.whl", hash = "sha256:45b1b1136a5cba6066c51da9f852dca7a855744db4ab72b23750c681d36f3202", size = 12191265, upload-time = "2022-09-25T19:04:09.365Z" },
 ]
 
 [[package]]

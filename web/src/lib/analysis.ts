@@ -2,8 +2,9 @@ import type { MixdownRequest } from '../audio/import/mixdown.worker';
 import { SAMPLE_RATE } from '../audio/core/types';
 import { patchProjectById, syncGrid, syncProgram, toast } from '../state/actions';
 import { getState } from '../state/store';
+import { guideMessage, guideStems, type GuideResult } from './guide';
 import { sectionsFromAnalysis, type AnalysisSection } from './sections';
-import type { Project } from './types';
+import type { Project, Stem } from './types';
 
 export interface AnalysisResult {
   backend: string;
@@ -12,6 +13,10 @@ export interface AnalysisResult {
   beats: number[];
   downbeats: number[];
   sections: AnalysisSection[];
+  /** "guide" when the guide track's spoken cues placed the sections. */
+  sectionsFrom?: 'guide' | 'audio';
+  /** Present when a guide track was sent. */
+  guide?: GuideResult;
 }
 
 const API = '/api';
@@ -21,9 +26,8 @@ export function isAnalyzing(id: string): boolean {
   return running.has(id);
 }
 
-function mixdown(project: Project): Promise<Blob> {
-  const stems = project.stems.filter((s) => s.inAnalysisMix);
-  const use = stems.length ? stems : project.stems;
+/** Mono WAV of some of a song's tracks (summed, peak-normalised). */
+function mixdown(project: Project, use: Stem[]): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const w = new Worker(new URL('../audio/import/mixdown.worker.ts', import.meta.url), { type: 'module' });
     w.onmessage = (e: MessageEvent<{ type: 'done'; wav: ArrayBuffer } | { type: 'error'; message: string }>) => {
@@ -46,9 +50,10 @@ function mixdown(project: Project): Promise<Blob> {
 
 class AnalyzerUnavailable extends Error {}
 
-async function postJob(wav: Blob): Promise<string> {
+async function postJob(wav: Blob, guide: Blob | null): Promise<string> {
   const form = new FormData();
   form.append('audio', wav, 'mix.wav');
+  if (guide) form.append('guide', guide, 'guide.wav');
   let r: Response;
   try {
     r = await fetch(`${API}/jobs`, { method: 'POST', body: form });
@@ -92,7 +97,7 @@ export function applyAnalysis(p: Project, res: AnalysisResult): Project {
       ...a,
       items: a.items.filter((it) => sections.some((s) => s.id === it.sectionId)),
     })),
-    analysis: { status: 'done', backend: res.backend },
+    analysis: { status: 'done', backend: res.backend, source: res.sectionsFrom ?? 'audio' },
   };
 }
 
@@ -103,8 +108,12 @@ export async function analyzeProject(project: Project): Promise<void> {
   const id = project.id;
   try {
     await patchProjectById(id, (p) => ({ ...p, analysis: { status: 'running', progress: 0 } }));
-    const wav = await mixdown(project);
-    const jobId = await postJob(wav);
+    const forMix = project.stems.filter((s) => s.inAnalysisMix);
+    const wav = await mixdown(project, forMix.length ? forMix : project.stems);
+    // the guide track alone, so the analyzer can read its spoken cues ("Verse", "Chorus"…)
+    const guide = guideStems(project.stems, getState().outputs);
+    const guideWav = guide.length ? await mixdown(project, guide) : null;
+    const jobId = await postJob(wav, guideWav);
     const res = await pollJob(jobId, (progress) => {
       void patchProjectById(id, (p) => ({ ...p, analysis: { status: 'running', progress } }));
     });
@@ -112,6 +121,8 @@ export async function analyzeProject(project: Project): Promise<void> {
     if (getState().current?.id === id) {
       syncGrid();
       syncProgram();
+      const note = guideMessage(res.guide, res.sectionsFrom);
+      if (note) toast(note.text, note.kind);
     }
   } catch (err) {
     const message =

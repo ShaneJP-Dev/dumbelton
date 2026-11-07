@@ -12,6 +12,8 @@ dependencies = [
   "soundfile>=0.12",
   "librosa>=0.10",
   "scikit-learn>=1.4",
+  "vosk==0.3.44",
+  "certifi>=2024.2.2",
 ]
 
 [dependency-groups]

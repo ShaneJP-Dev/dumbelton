@@ -2,9 +2,10 @@ import { AudioEngine } from '../audio/engine/AudioEngine';
 import { loadWireSong } from '../audio/import/pcmStore';
 import type { Grid } from '../audio/core/types';
 import type { Project } from '../lib/types';
-import { stemParams } from '../lib/stemParams';
+import { groupForStem } from '../lib/outputs';
+import { clickAudible, stemParams, type LiveMutes } from '../lib/stemParams';
 import { memoryBudgetBytes, projectBytes } from '../audio/live/budget';
-import { getState, setState } from './store';
+import { getState, setState, type AppState } from './store';
 
 let enginePromise: Promise<AudioEngine> | null = null;
 let engineInstance: AudioEngine | null = null;
@@ -40,10 +41,26 @@ export function projectGrid(p: Project): Grid {
   return { beats: p.beats, downbeats: p.downbeats };
 }
 
+export function liveMutes(s: Pick<AppState, 'liveMuted' | 'liveMutedGroups' | 'liveMuteAll'> = getState()): LiveMutes {
+  return { tracks: s.liveMuted, groups: s.liveMutedGroups, all: s.liveMuteAll };
+}
+
+/** The Outputs group a track belongs to (Click, Guide, Drums…), by name or pinned output. */
+export function stemGroupId(stem: { name: string; output?: string }): string {
+  return groupForStem(getState().outputs, stem).id;
+}
+
+/** The app's click, after Live's Click-group and "mute all" mutes. */
+export function applyClick(engine: AudioEngine): void {
+  const s = getState();
+  const clickGroup = s.outputs.groups.find((g) => g.click)?.id ?? null;
+  engine.setClick({ enabled: clickAudible(s.click, s.mode, liveMutes(s), clickGroup) });
+}
+
 export function applyStemParams(engine: AudioEngine, p: Project): void {
   engine.setMasterGain(p.masterGain ?? 1);
-  const { mode, liveMuted } = getState();
-  stemParams(p, mode, liveMuted).forEach((params, i) => engine.setStem(i, params));
+  stemParams(p, getState().mode, liveMutes(), stemGroupId).forEach((params, i) => engine.setStem(i, params));
+  applyClick(engine);
 }
 
 const loading = new Map<string, Promise<void>>();

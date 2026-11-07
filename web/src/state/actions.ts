@@ -8,7 +8,7 @@ import { buildRouting, saveSetup, type OutputSetup } from '../lib/outputs';
 import { barLength } from '../audio/core/grid';
 import { SAMPLE_RATE } from '../audio/core/types';
 import type { Program } from '../audio/core/types';
-import { activateProject, applyStemParams, getEngine, peekEngine, projectGrid } from './engine';
+import { activateProject, applyClick, applyStemParams, getEngine, peekEngine, projectGrid } from './engine';
 import { getState, setState, type Mode, type Route } from './store';
 
 // ------------------------------------------------------------------ routing
@@ -188,7 +188,7 @@ export async function openProject(id: string, opts: { keepMode?: boolean } = {})
     const engine = await activateProject(p, getState().live !== null);
     setState({ engineError: null });
     watchEngine();
-    engine.setClick({ enabled: getState().click });
+    applyClick(engine);
     engine.setSpeed(getState().speed);
     syncTransition();
     syncRouting();
@@ -223,16 +223,30 @@ export function syncProgram(): void {
 export function setMode(mode: Mode): void {
   const entering = mode === 'live' && getState().mode !== 'live';
   // entering Live: nothing muted ("super live"); leaving: the song's own mutes come back
-  setState(entering ? { mode, liveMuted: [] } : { mode });
+  setState(entering ? { mode, liveMuted: [], liveMutedGroups: [], liveMuteAll: false } : { mode });
   syncStems();
   syncProgram();
 }
 
+function toggled(list: string[], id: string): string[] {
+  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+}
+
 /** Mute or unmute a track on the Live screen (does not change the song's saved mutes). */
-export function setLiveMuted(stemId: string, muted: boolean): void {
-  const cur = getState().liveMuted;
-  const next = muted ? [...new Set([...cur, stemId])] : cur.filter((id) => id !== stemId);
-  setState({ liveMuted: next });
+export function toggleLiveTrack(stemId: string): void {
+  setState({ liveMuted: toggled(getState().liveMuted, stemId) });
+  syncStems();
+}
+
+/** Mute or unmute an output group (Click, Guide, Drums…) on the Live screen. */
+export function toggleLiveGroup(groupId: string): void {
+  setState({ liveMutedGroups: toggled(getState().liveMutedGroups, groupId) });
+  syncStems();
+}
+
+/** "Mute all" on the Live screen. Unmuting brings back exactly what was muted before. */
+export function setLiveMuteAll(on: boolean): void {
+  setState({ liveMuteAll: on });
   syncStems();
 }
 
@@ -264,6 +278,7 @@ export async function setOutputs(next: OutputSetup): Promise<void> {
   setState({ outputs: next });
   saveSetup(next);
   syncRouting();
+  syncStems(); // Live group mutes follow tracks into their (new) groups
   if (next.deviceId !== prev.deviceId) {
     const engine = peekEngine();
     if (engine) {
@@ -302,7 +317,8 @@ export function setSpeed(speed: number): void {
 
 export function setClick(on: boolean): void {
   setState({ click: on });
-  peekEngine()?.setClick({ enabled: on });
+  const engine = peekEngine();
+  if (engine) applyClick(engine);
 }
 
 // ------------------------------------------------------------------ sections

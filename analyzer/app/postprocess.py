@@ -8,6 +8,9 @@ Steps (in order):
 3. Snap internal section boundaries to the nearest downbeat.
 4. Merge sections shorter than 2 bars into a neighbour.
 5. Number repeated labels ("Verse 1", "Verse 2").
+
+When a guide track's spoken cues are given (see cues.py), they place and
+name the sections instead of steps 2-3, on the refined downbeats.
 """
 
 from __future__ import annotations
@@ -16,9 +19,10 @@ from collections import Counter
 
 import numpy as np
 
+from .cues import Cue, sections_from_cues
 from .types import RawAnalysis, RawSection, Section
 
-KINDS = ("intro", "verse", "pre-chorus", "chorus", "bridge", "solo", "inst", "break", "outro")
+KINDS = ("intro", "verse", "pre-chorus", "chorus", "bridge", "interlude", "tag", "vamp", "solo", "inst", "break", "outro")
 
 DISPLAY = {
     "intro": "Intro",
@@ -26,6 +30,9 @@ DISPLAY = {
     "pre-chorus": "Pre-Chorus",
     "chorus": "Chorus",
     "bridge": "Bridge",
+    "interlude": "Interlude",
+    "tag": "Tag",
+    "vamp": "Vamp",
     "solo": "Solo",
     "inst": "Instrumental",
     "break": "Break",
@@ -44,6 +51,7 @@ _ALIASES = {
 ONSET_WINDOW = 0.03
 PRE_ROLL = 0.003
 MIN_BARS = 2
+MIN_BARS_CUED = 1  # a spoken cue is deliberate: a one-bar break or tag is real
 
 
 def normalize_label(label: str) -> str | None:
@@ -163,12 +171,22 @@ def name_sections(sections: list[RawSection]) -> list[Section]:
     return out
 
 
-def postprocess(raw: RawAnalysis, onsets: np.ndarray | None = None) -> dict:
+def beat_length(beats: list[float], downbeats: list[float]) -> float:
+    if len(beats) >= 2:
+        return float(np.median(np.diff(beats)))
+    return bar_length(downbeats) / 4
+
+
+def postprocess(raw: RawAnalysis, onsets: np.ndarray | None = None, cues: list[Cue] | None = None) -> dict:
     beats = refine_to_onsets(raw.beats, onsets)
     downbeats = refine_to_onsets(raw.downbeats, onsets)
-    secs = drop_silence(raw.sections, raw.duration)
-    secs = snap_to_downbeats(secs, downbeats)
-    secs = merge_short(secs, MIN_BARS * bar_length(downbeats))
+    cued = sections_from_cues(cues, downbeats, beat_length(beats, downbeats), raw.duration) if cues else None
+    if cued:
+        secs = merge_short(cued, MIN_BARS_CUED * bar_length(downbeats))
+    else:
+        secs = drop_silence(raw.sections, raw.duration)
+        secs = snap_to_downbeats(secs, downbeats)
+        secs = merge_short(secs, MIN_BARS * bar_length(downbeats))
     named = name_sections(secs)
     return {
         "backend": raw.backend,
@@ -177,4 +195,5 @@ def postprocess(raw: RawAnalysis, onsets: np.ndarray | None = None) -> dict:
         "beats": [round(t, 4) for t in beats],
         "downbeats": [round(t, 4) for t in downbeats],
         "sections": [s.to_dict() for s in named],
+        "sectionsFrom": "guide" if cued else "audio",
     }

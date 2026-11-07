@@ -47,8 +47,12 @@ export interface AppState {
   liveArrangementId: string | null;
   /** The song reached its end in Live mode (show "next song"). */
   liveEnded: boolean;
-  /** Tracks muted on the Live screen (Live starts with none: "super live"). */
+  /** Tracks muted on the Live screen (Live starts with none: "super live"). Reset for every song. */
   liveMuted: string[];
+  /** Output groups muted on the Live screen (kept from song to song, like mute groups on a desk). */
+  liveMutedGroups: string[];
+  /** "Mute all" on the Live screen: everything silent while the song keeps playing. */
+  liveMuteAll: boolean;
   /** Open the next song in the current mode instead of Practice (Live song list). */
   keepModeOnOpen: boolean;
   toast: { text: string; kind: 'info' | 'error' } | null;
@@ -77,6 +81,8 @@ export const useApp = create<AppState>(() => ({
   liveArrangementId: null,
   liveEnded: false,
   liveMuted: [],
+  liveMutedGroups: [],
+  liveMuteAll: false,
   keepModeOnOpen: false,
   toast: null,
   engineError: null,
