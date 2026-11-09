@@ -7,12 +7,12 @@ import { livePads } from '../lib/arrangement';
 import { barsIn, KIND_META } from '../lib/sections';
 import type { Project } from '../lib/types';
 import { getEngine } from '../state/engine';
-import { navigate } from '../state/actions';
+import { navigate, setLiveRepeat } from '../state/actions';
 import { goToSetlistIndex, goToSongLive, nextSong, saveLiveState } from '../state/live';
 import { setState, useApp } from '../state/store';
 import { FadePicker } from './FadePicker';
 import { LiveTracks } from './LiveTracks';
-import { Expand, Next, Prev, X } from './icons';
+import { Expand, Loop, Next, Prev, X } from './icons';
 import { Button, cx, formatTime } from './ui';
 
 /** Bars (downbeats) from frame f until the queued jump lands. */
@@ -175,6 +175,7 @@ function LiveSongList({ variant }: { variant: 'sidebar' | 'strip' }) {
 export function LivePanel({ project }: { project: Project }) {
   const transport = useApp((s) => s.transport);
   const quantize = useApp((s) => s.quantize);
+  const repeat = useApp((s) => s.liveRepeat);
   const arrangementId = useApp((s) => s.liveArrangementId);
   const pads = livePads(project, arrangementId);
   const pending = transport.pending;
@@ -230,6 +231,19 @@ export function LivePanel({ project }: { project: Project }) {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          data-testid="live-repeat"
+          aria-pressed={repeat}
+          title="Repeat the current section until you tap another one (R)"
+          onClick={() => setLiveRepeat(!repeat)}
+          className={cx(
+            'flex h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-medium ring-1',
+            repeat ? 'bg-emerald-500 text-black ring-emerald-300' : 'bg-white/5 text-gray-200 ring-white/10 hover:bg-white/10',
+          )}
+        >
+          <Loop size={16} /> {repeat ? 'Repeating' : 'Repeat'}
+        </button>
         <FadePicker hasGrid={project.beats.length > 1} />
         {arrangement && <span className="text-sm text-gray-400">Arrangement: {arrangement.name}</span>}
         <div className="ml-auto flex gap-2">
@@ -270,10 +284,27 @@ export function LivePanel({ project }: { project: Project }) {
             >
               <span className="flex items-start justify-between gap-2">
                 <span className="text-lg font-bold leading-tight md:text-xl">{section.name}</span>
-                {i < 9 && <span className="rounded bg-black/25 px-1.5 text-xs font-semibold">{i + 1}</span>}
+                <span className="flex items-center gap-1">
+                  {isCurrent && repeat && (
+                    <span className="rounded bg-black/35 p-0.5" title="Repeating" data-testid="pad-repeat">
+                      <Loop size={14} />
+                    </span>
+                  )}
+                  {i < 9 && <span className="rounded bg-black/25 px-1.5 text-xs font-semibold">{i + 1}</span>}
+                </span>
               </span>
               <span className="text-sm text-white/85">
-                {isCurrent && transport.playing ? 'Playing' : isNext ? (countdown > 0 ? `Next · in ${countdown} bar${countdown === 1 ? '' : 's'}` : 'Next') : bars ? `${bars} bars` : ''}
+                {isCurrent && transport.playing
+                  ? repeat && !pending
+                    ? 'Repeating'
+                    : 'Playing'
+                  : isNext
+                    ? countdown > 0
+                      ? `Next · in ${countdown} bar${countdown === 1 ? '' : 's'}`
+                      : 'Next'
+                    : bars
+                      ? `${bars} bars`
+                      : ''}
               </span>
             </button>
           );
@@ -282,7 +313,7 @@ export function LivePanel({ project }: { project: Project }) {
       <LiveTracks stems={project.stems} />
       <p className="mt-4 text-center text-xs text-gray-500">
         Tap a section to play it next. Keys: Space play/stop · 1–9 sections · ← → previous/next section (works with page-turner pedals) ·
-        Shift+→ next song
+        R repeat · Shift+→ next song
       </p>
       </>
       )}

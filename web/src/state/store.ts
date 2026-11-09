@@ -53,6 +53,8 @@ export interface AppState {
   liveMutedGroups: string[];
   /** "Mute all" on the Live screen: everything silent while the song keeps playing. */
   liveMuteAll: boolean;
+  /** Live "Repeat" (vamp): the current section loops until another one is tapped. */
+  liveRepeat: boolean;
   /** Open the next song in the current mode instead of Practice (Live song list). */
   keepModeOnOpen: boolean;
   toast: { text: string; kind: 'info' | 'error' } | null;
@@ -83,6 +85,7 @@ export const useApp = create<AppState>(() => ({
   liveMuted: [],
   liveMutedGroups: [],
   liveMuteAll: false,
+  liveRepeat: false,
   keepModeOnOpen: false,
   toast: null,
   engineError: null,

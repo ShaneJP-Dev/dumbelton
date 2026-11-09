@@ -83,4 +83,5 @@ export type CoreEvent =
   | { type: 'armed'; at: Frame; to: number }
   | { type: 'jumped'; to: number; frame: Frame }
   | { type: 'segment'; index: number }
+  | { type: 'repeat'; on: boolean }
   | { type: 'ended' };

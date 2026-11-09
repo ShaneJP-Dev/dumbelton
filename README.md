@@ -11,6 +11,7 @@ bridge and outro, as coloured blocks above the tracks. Then:
 - **Live**: big pads for each section. Tap one and it starts at the end of the current section, or at
   the next bar, with a clean cut or a fade over 1 beat, 2 beats or 1 bar (the new part still lands on
   its downbeat at full volume; the same fade is used between the parts of an arrangement).
+  **Repeat** keeps the current section going round (a vamp) until you tap where to go next.
   Live is "super live": every track plays, whatever was muted or soloed in Practice (see
   [Muting in Live](#muting-in-live)). Setlists load the next song in advance. Works with keyboard
   shortcuts and Bluetooth page-turner pedals.
@@ -192,6 +193,14 @@ analyzer missed, press **A** while the song plays, double-click the section bar,
 The new section starts at that point, on the nearest bar. If the analyzer is not running, songs still import
 and play, and you can mark sections by hand.
 
+### Repeat (vamp) in Live
+
+Tap **Repeat** (or press R) and the section that's playing starts again from its top when it ends,
+as many times as needed, with no gap. The pad shows a loop sign and says "Repeating". When you know
+where to go, tap that section's pad: it comes in as usual (at the end of the section or the next bar,
+with your chosen fade) and Repeat switches itself off, so the new section plays on normally. Tap
+Repeat again to stop repeating and let the song carry on into the next section.
+
 ### Muting in Live
 
 When you open Live, nothing is muted, whatever was muted or soloed in Practice. Practice mutes come
@@ -217,6 +226,7 @@ back when you leave Live.
 | A | Add a section at the playhead | |
 | L | Loop selected section | |
 | C | Click on / off | Click on / off |
+| R | | Repeat (vamp) on / off |
 
 Held keys are ignored, so pedals that auto-repeat do not skip sections.
 
@@ -280,7 +290,7 @@ pnpm e2e
 
 runs the end-to-end tests (Playwright, Chromium). They start both servers and drive the app with a
 synthetic song: import, section detection, seek, loop, mute, arrangement export length, a Live
-quantised jump, Live track, group and mute-all mutes, sending a guide track, working without the
+quantised jump, Repeat, Live track, group and mute-all mutes, sending a guide track, working without the
 analyzer, and importing a folder of `.m4a` stems with their Ableton `.asd` files (that test needs ffmpeg
 to create the m4a files, and is skipped without it).
 

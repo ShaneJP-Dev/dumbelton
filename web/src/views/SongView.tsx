@@ -17,6 +17,7 @@ import {
   openProject,
   patchProject,
   setClick,
+  setLiveRepeat,
   setMode,
   syncProgram,
   togglePlay,
@@ -154,6 +155,10 @@ export function SongView({ id }: { id: string }) {
         }
         if (e.key === 'c' || e.key === 'C') {
           setClick(!getState().click);
+          return true;
+        }
+        if ((e.key === 'r' || e.key === 'R') && getState().mode === 'live') {
+          setLiveRepeat(!getState().liveRepeat);
           return true;
         }
         if (e.key === 'Escape') setState({ selected: null });

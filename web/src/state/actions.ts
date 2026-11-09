@@ -149,6 +149,7 @@ function watchEngine(): void {
   });
   const offEv = engine.on((e) => {
     if (e.type === 'ended') onSongEnded();
+    if (e.type === 'repeat') setState({ liveRepeat: e.on }); // a queued jump landed and ended the vamp
   });
   unsubEngine = () => {
     offPos();
@@ -177,6 +178,7 @@ export async function openProject(id: string, opts: { keepMode?: boolean } = {})
       loop: false,
       liveEnded: false,
       liveMuted: [],
+      liveRepeat: false,
       arrangementId: p.arrangements[0]?.id ?? null,
       transport: { playing: false, segment: 0, pending: null },
       // a different song opens in Practice, unless a setlist / resumed live session is running
@@ -189,6 +191,7 @@ export async function openProject(id: string, opts: { keepMode?: boolean } = {})
     setState({ engineError: null });
     watchEngine();
     applyClick(engine);
+    engine.setRepeat(getState().mode === 'live' && getState().liveRepeat);
     engine.setSpeed(getState().speed);
     syncTransition();
     syncRouting();
@@ -223,9 +226,16 @@ export function syncProgram(): void {
 export function setMode(mode: Mode): void {
   const entering = mode === 'live' && getState().mode !== 'live';
   // entering Live: nothing muted ("super live"); leaving: the song's own mutes come back
-  setState(entering ? { mode, liveMuted: [], liveMutedGroups: [], liveMuteAll: false } : { mode });
+  setState(entering ? { mode, liveMuted: [], liveMutedGroups: [], liveMuteAll: false, liveRepeat: false } : { mode, liveRepeat: false });
+  peekEngine()?.setRepeat(false);
   syncStems();
   syncProgram();
+}
+
+/** Live "Repeat" (vamp): loop the current section until another one is tapped. */
+export function setLiveRepeat(on: boolean): void {
+  setState({ liveRepeat: on });
+  peekEngine()?.setRepeat(on && getState().mode === 'live');
 }
 
 function toggled(list: string[], id: string): string[] {

@@ -15,16 +15,20 @@ type Report = { frame: number; segment: number; playing: boolean; pending: { at:
 const report = (page: Page) =>
   page.evaluate(() => (window as unknown as { __engine: { clock: { report: Report } } }).__engine.clock.report);
 
-async function project(page: Page) {
+/** A saved song: the one named `name`, or the first one. */
+async function project(page: Page, name?: string) {
   return page.evaluate(
-    () =>
+    (name) =>
       new Promise<{ sections: { name: string; start: number; end: number }[]; stems: { name: string; muted: boolean; gain: number }[] }>((res) => {
         const req = indexedDB.open('musical');
         req.onsuccess = () => {
-          req.result.transaction('projects').objectStore('projects').getAll().onsuccess = (e) =>
-            res((e.target as IDBRequest).result[0]);
+          req.result.transaction('projects').objectStore('projects').getAll().onsuccess = (e) => {
+            const all = (e.target as IDBRequest).result as { name: string }[];
+            res((all.find((p) => p.name === name) ?? all[0]) as never);
+          };
         };
       }),
+    name,
   );
 }
 
@@ -403,6 +407,45 @@ test.describe.serial('song workflow', () => {
     await page.getByRole('button', { name: 'Practice', exact: true }).click();
     await page.getByRole('button', { name: 'Mute drums' }).click();
     await page.getByTitle('Click track from the beat grid').click();
+  });
+
+  test('Repeat loops the current section until another one is tapped', async () => {
+    type E = { __engine: { seek: (f: number, s?: number) => void; play: () => void; pause: () => void; repeat: boolean } };
+    await page.getByRole('button', { name: 'Live', exact: true }).click();
+    const p = await project(page, 'E2E Song');
+    const intro = p.sections[0];
+    await page.getByTestId('pad').first().click();
+    await page.getByRole('button', { name: 'At next bar' }).click();
+    const repeat = page.getByTestId('live-repeat');
+    await repeat.click();
+    await expect(repeat).toHaveAttribute('aria-pressed', 'true');
+    expect(await page.evaluate(() => (window as unknown as E).__engine.repeat)).toBe(true);
+    // start one second before the end of the intro: it comes round to its start instead of going on
+    await page.evaluate((f) => {
+      const e = (window as unknown as E).__engine;
+      e.seek(f, 0);
+      e.play();
+    }, intro.end - SR);
+    await page.waitForTimeout(1600);
+    let r = await report(page);
+    expect(r.segment).toBe(0);
+    expect(r.frame).toBeLessThan(intro.start + SR);
+    await expect(page.locator('[data-testid=pad]').first().getByTestId('pad-repeat')).toBeVisible();
+    // tap the next section: it lands at the next bar and the repeat ends
+    await page.getByTestId('pad').nth(1).click();
+    await expect.poll(async () => (await report(page)).segment, { timeout: 8000 }).toBe(1);
+    await expect(repeat).toHaveAttribute('aria-pressed', 'false');
+    // (an earlier test set a 1-bar fade, so the lead-in plays first) then it carries on in section 2
+    await expect.poll(async () => (await report(page)).frame, { timeout: 5000 }).toBeGreaterThanOrEqual(p.sections[1].start);
+    r = await report(page);
+    expect(r.segment).toBe(1);
+    await page.evaluate(() => (window as unknown as E).__engine.pause());
+    // keyboard R toggles it too
+    await page.keyboard.press('r');
+    await expect(repeat).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('r');
+    await expect(repeat).toHaveAttribute('aria-pressed', 'false');
+    await page.getByRole('button', { name: 'Practice', exact: true }).click();
   });
 });
 

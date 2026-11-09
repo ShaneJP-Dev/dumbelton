@@ -108,6 +108,8 @@ export class RenderCore {
   private speed = 1;
   /** Crossfade length for jumps and arrangement joins (frames); XFADE_FRAMES = a clean cut. */
   private transition = XFADE_FRAMES;
+  /** Live "Repeat" (vamp): the current segment loops until a queued jump lands. */
+  private repeat = false;
   private stretching = false;
   /** Source frame of the last output frame (differs from pos while the stretcher buffers). */
   private lastOut = 0;
@@ -168,6 +170,7 @@ export class RenderCore {
     this.program = song
       ? { segments: [{ id: 'all', start: 0, end: song.length }], loop: false }
       : { segments: [], loop: false };
+    this.repeat = false;
     this.stretcher?.reset();
     this.computeTrigger();
   }
@@ -213,6 +216,20 @@ export class RenderCore {
 
   getTransition(): number {
     return this.transition;
+  }
+
+  /**
+   * Repeat (vamp): at its end the current segment starts again (tight crossfade)
+   * instead of moving on. A queued jump still lands, and turns repeat off.
+   */
+  setRepeat(on: boolean): void {
+    if (on === this.repeat) return;
+    this.repeat = on;
+    this.computeTrigger();
+  }
+
+  getRepeat(): boolean {
+    return this.repeat;
   }
 
   setStem(index: number, p: Partial<StemParams>): void {
@@ -454,6 +471,7 @@ export class RenderCore {
   }
 
   private nextIndex(i: number): number {
+    if (this.repeat) return i;
     const len = this.program.segments.length;
     if (i + 1 < len) return i + 1;
     return this.program.loop ? 0 : -1;
@@ -491,7 +509,7 @@ export class RenderCore {
 
   /** Crossfade length at a join between segments: loops stay tight, arrangements use the transition. */
   private joinLen(): number {
-    return this.program.loop ? XFADE_FRAMES : this.transition;
+    return this.program.loop || this.repeat ? XFADE_FRAMES : this.transition;
   }
 
   /** Start a crossfade from the current position into the start of segment `to`. */
@@ -513,6 +531,11 @@ export class RenderCore {
         this.pending = null;
         this.startXfade(p.to, p.len);
         this.emit({ type: 'jumped', to: p.to, frame: segs[p.to].start });
+        if (this.repeat) {
+          // the vamp is over: the new section plays on as normal
+          this.repeat = false;
+          this.emit({ type: 'repeat', on: false });
+        }
         break;
       }
       case 'contig': {

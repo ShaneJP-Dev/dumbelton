@@ -22,6 +22,7 @@ export type ToWorklet =
   | { type: 'click'; params: Partial<ClickParams> }
   | { type: 'speed'; speed: number }
   | { type: 'transition'; frames: number }
+  | { type: 'repeat'; on: boolean }
   | { type: 'routing'; routing: Routing }
   | { type: 'testTone'; channel: number }
   | { type: 'master'; gain: number }

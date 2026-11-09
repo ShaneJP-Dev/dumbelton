@@ -196,6 +196,13 @@ export class AudioEngine {
   setTransition(frames: number): void {
     this.send({ type: 'transition', frames });
   }
+  /** Last Repeat (vamp) setting sent to the audio thread (for tests). */
+  repeat = false;
+  /** Live "Repeat": loop the current section until a queued jump lands. */
+  setRepeat(on: boolean): void {
+    this.repeat = on;
+    this.send({ type: 'repeat', on });
+  }
   setGrid(grid: Grid): void {
     this.send({ type: 'grid', grid });
   }

@@ -93,6 +93,9 @@ class EngineProcessor extends AudioWorkletProcessor {
       case 'transition':
         core.setTransition(m.frames);
         break;
+      case 'repeat':
+        core.setRepeat(m.on);
+        break;
       case 'routing':
         core.setRouting(m.routing);
         break;
