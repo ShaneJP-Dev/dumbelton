@@ -5,7 +5,7 @@ import type { SongKey } from '../lib/musicKey';
 import type { Project, Section, Setlist } from '../lib/types';
 import { addSectionAt, snapFrame } from '../lib/sections';
 import { fadeFrames, saveFade, type FadeBeats } from '../lib/fade';
-import { buildRouting, monitorFor, saveSetup, type OutputSetup } from '../lib/outputs';
+import { assignTrackChannels, buildRouting, monitorFor, saveSetup, type OutputSetup } from '../lib/outputs';
 import { barLength } from '../audio/core/grid';
 import { SAMPLE_RATE } from '../audio/core/types';
 import type { Program } from '../audio/core/types';
@@ -342,9 +342,52 @@ export function syncTransition(): void {
 /** Send the output routing for the open song's tracks to the engine. */
 export function syncRouting(): void {
   const engine = peekEngine();
+  if (getState().current) ensureTrackChannels(getState().current!.stems);
   const { current, outputs } = getState();
   if (engine && current && engine.activeSongId === current.id) engine.setRouting(buildRouting(outputs, current.stems));
   syncMonitor();
+}
+
+/**
+ * One channel per track: give track names never seen before the next free
+ * channels (kept for every later song). Saved in this browser.
+ */
+export function ensureTrackChannels(stems: { name: string; output?: string }[]): void {
+  const { outputs } = getState();
+  if (outputs.mode !== 'multitrack' || outputs.layout !== 'tracks') return;
+  const next = assignTrackChannels(outputs, stems);
+  if (next) {
+    setState({ outputs: next });
+    saveSetup(next);
+  }
+}
+
+/** Number the tracks of every song, oldest song first, so the whole list is there at once. */
+export function numberAllSongs(): void {
+  let setup = getState().outputs;
+  if (setup.mode !== 'multitrack' || setup.layout !== 'tracks') return;
+  let changed = false;
+  for (const p of [...getState().projects].sort((a, b) => a.createdAt - b.createdAt)) {
+    const next = assignTrackChannels(setup, p.stems);
+    if (next) {
+      setup = next;
+      changed = true;
+    }
+  }
+  if (changed) {
+    setState({ outputs: setup });
+    saveSetup(setup);
+    syncRouting();
+  }
+}
+
+/** Forget every track's channel and number them again, oldest song first. */
+export function renumberTracks(): void {
+  const setup = { ...getState().outputs, trackChannels: [] };
+  setState({ outputs: setup });
+  saveSetup(setup);
+  numberAllSongs();
+  syncRouting();
 }
 
 /** What a 2-channel device (a laptop) plays with a multichannel layout: the full mix, or one channel. */

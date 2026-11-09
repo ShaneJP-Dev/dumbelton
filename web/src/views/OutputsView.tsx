@@ -4,16 +4,19 @@ import { Button, cx } from '../components/ui';
 import { uid } from '../lib/ids';
 import {
   channelLabel,
+  channelList,
   channelProblems,
   defaultSetup,
   FALLBACK_GROUP,
+  fixedGroupForStem,
   groupChannels,
   groupForStem,
+  trackChannelFor,
   type OutputGroup,
   type OutputSetup,
 } from '../lib/outputs';
 import type { Project } from '../lib/types';
-import { navigate, patchProjectById, setOutputs, syncRouting } from '../state/actions';
+import { navigate, numberAllSongs, patchProjectById, renumberTracks, setOutputs, syncRouting, toast } from '../state/actions';
 import { getEngine, peekEngine } from '../state/engine';
 import { useApp } from '../state/store';
 
@@ -114,7 +117,20 @@ function DeviceCard() {
   );
 }
 
-function GroupRow({ g, setup, onChange, onRemove }: { g: OutputGroup; setup: OutputSetup; onChange: (g: OutputGroup) => void; onRemove?: () => void }) {
+function GroupRow({
+  g,
+  setup,
+  onChange,
+  onRemove,
+  showChannels = true,
+}: {
+  g: OutputGroup;
+  setup: OutputSetup;
+  onChange: (g: OutputGroup) => void;
+  onRemove?: () => void;
+  /** false in the one-channel-per-track layout, where groups only drive Live mutes */
+  showChannels?: boolean;
+}) {
   const [keywords, setKeywords] = useState(g.keywords.join(', '));
   useEffect(() => setKeywords(g.keywords.join(', ')), [g.keywords]);
   return (
@@ -127,6 +143,7 @@ function GroupRow({ g, setup, onChange, onRemove }: { g: OutputGroup; setup: Out
           className="h-9 w-28 rounded-md bg-white/10 px-2 text-sm"
         />
       </td>
+      {showChannels && (
       <td className="py-2 pr-2 whitespace-nowrap">
         <input
           type="number"
@@ -151,6 +168,7 @@ function GroupRow({ g, setup, onChange, onRemove }: { g: OutputGroup; setup: Out
         </select>
         <span className="ml-2 text-xs text-gray-400 tabular-nums">ch {channelLabel(g)}</span>
       </td>
+      )}
       <td className="py-2 pr-2">
         {g.id === FALLBACK_GROUP ? (
           <span className="text-xs text-gray-500">Anything not matched above</span>
@@ -164,12 +182,14 @@ function GroupRow({ g, setup, onChange, onRemove }: { g: OutputGroup; setup: Out
             className="h-9 w-full min-w-40 rounded-md bg-white/10 px-2 text-sm"
           />
         )}
-        {g.click && <div className="mt-1 text-[11px] text-gray-500">Also gets the app's click and count-in.</div>}
+        {g.click && showChannels && <div className="mt-1 text-[11px] text-gray-500">Also gets the app's click and count-in.</div>}
       </td>
       <td className="py-2 whitespace-nowrap">
-        <Button variant="ghost" onClick={() => testGroup(g)} data-testid={`test-${g.id}`} title="Play a beep on these channels">
-          Test
-        </Button>
+        {showChannels && (
+          <Button variant="ghost" onClick={() => testGroup(g)} data-testid={`test-${g.id}`} title="Play a beep on these channels">
+            Test
+          </Button>
+        )}
         {onRemove && (
           <Button variant="ghost" aria-label={`Remove ${g.name}`} onClick={onRemove}>
             <X size={16} />
@@ -178,6 +198,110 @@ function GroupRow({ g, setup, onChange, onRemove }: { g: OutputGroup; setup: Out
       </td>
       {setup.mode === 'stereo' && null}
     </tr>
+  );
+}
+
+function ChannelInput({ value, label, onChange }: { value: number; label: string; onChange: (ch: number) => void }) {
+  return (
+    <input
+      type="number"
+      min={1}
+      max={32}
+      value={value || ''}
+      placeholder="—"
+      aria-label={label}
+      onChange={(e) => onChange(Math.max(1, Math.min(32, Math.round(Number(e.target.value) || 1))))}
+      className="h-9 w-16 rounded-md bg-white/10 px-2 text-sm tabular-nums"
+    />
+  );
+}
+
+/** One channel per track: Click and Guide, then every track name's own channel (kept across songs). */
+function TrackChannels({ setup, update }: { setup: OutputSetup; update: (patch: Partial<OutputSetup>) => void }) {
+  const projects = useApp((s) => s.projects);
+  useEffect(() => numberAllSongs(), [projects.length, setup.layout, setup.mode]);
+  const setGroupFirst = (id: string, first: number) =>
+    update({ groups: setup.groups.map((g) => (g.id === id ? { ...g, first, stereo: false } : g)) });
+  const setTrack = (key: string, ch: number) => update({ trackChannels: setup.trackChannels.map((t) => (t.key === key ? { ...t, ch } : t)) });
+  const fixed = setup.groups.filter((g) => g.click || g.id === 'guide');
+  const tracks = [...setup.trackChannels].sort((a, b) => (a.ch || 99) - (b.ch || 99));
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(channelList(setup));
+      toast('Channel list copied. Paste it wherever you set up the desk.');
+    } catch {
+      toast("Couldn't copy here; the list is on this page.", 'error');
+    }
+  };
+  return (
+    <div className="mt-3" data-testid="track-channels">
+      <p className="text-sm text-gray-400">
+        Every track has its own channel (stereo tracks are summed to one). A track name keeps its channel in every song, so
+        the desk's settings stay right: the first time a name appears it gets the next free channel. Change any number below.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-4">
+        {fixed.map((g) => (
+          <label key={g.id} className="flex items-center gap-2 text-sm">
+            <span className="w-12 font-medium">{g.name}</span>
+            <ChannelInput value={g.first} label={`${g.name} channel`} onChange={(ch) => setGroupFirst(g.id, ch)} />
+            <Button variant="ghost" onClick={() => testGroup({ first: g.first, stereo: false })} data-testid={`test-${g.id}`}>
+              Test
+            </Button>
+          </label>
+        ))}
+      </div>
+      <table className="mt-3 w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-gray-500">
+            <th className="pb-1 font-normal">Channel</th>
+            <th className="pb-1 font-normal">Track</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {tracks.length === 0 && (
+            <tr>
+              <td colSpan={3} className="py-3 text-gray-500">
+                No tracks yet: import a song and its tracks are numbered here.
+              </td>
+            </tr>
+          )}
+          {tracks.map((t) => (
+            <tr key={t.key} className="border-t border-white/5" data-testid="track-channel" data-name={t.name} data-ch={t.ch}>
+              <td className="py-1.5 pr-2">
+                <ChannelInput value={t.ch} label={`${t.name} channel`} onChange={(ch) => setTrack(t.key, ch)} />
+              </td>
+              <td className="py-1.5 pr-2">{t.name}</td>
+              <td className="py-1.5 text-right whitespace-nowrap">
+                <Button variant="ghost" disabled={t.ch < 1} onClick={() => testGroup({ first: t.ch, stereo: false })}>
+                  Test
+                </Button>
+                <Button
+                  variant="ghost"
+                  aria-label={`Forget ${t.name}'s channel`}
+                  title="Forget this channel (the name gets the next free one when a song uses it again)"
+                  onClick={() => update({ trackChannels: setup.trackChannels.filter((x) => x.key !== t.key) })}
+                >
+                  <X size={16} />
+                </Button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button onClick={() => void copy()} data-testid="copy-channels">
+          Copy channel list
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => window.confirm('Number every track again from channel 3, oldest song first?') && renumberTracks()}
+          data-testid="renumber"
+        >
+          Renumber all
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -195,6 +319,58 @@ function SongRouting({ setup }: { setup: OutputSetup }) {
     }));
     syncRouting();
   };
+
+  if (setup.layout === 'tracks') {
+    const setTrack = (name: string, ch: number) => {
+      const t = trackChannelFor(setup, name);
+      if (t) void setOutputs({ ...setup, trackChannels: setup.trackChannels.map((x) => (x.key === t.key ? { ...x, ch } : x)) });
+    };
+    return (
+      <>
+        <select
+          value={song.id}
+          onChange={(e) => setSongId(e.target.value)}
+          aria-label="Song"
+          className="mb-3 h-9 max-w-full rounded-lg bg-white/10 px-2 text-sm"
+        >
+          {projects.map((p) => (
+            <option key={p.id} value={p.id} className="bg-[#151924]">
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <p className="mb-2 text-xs text-gray-500">A changed number applies to every song with a track of that name.</p>
+        <table className="w-full text-sm">
+          <tbody>
+            {song.stems.map((s) => {
+              const fixed = fixedGroupForStem(setup, s);
+              const t = fixed ? undefined : trackChannelFor(setup, s.name);
+              const chans = fixed ? channelLabel({ first: fixed.first, stereo: false }) : t && t.ch > 0 ? String(t.ch) : '';
+              return (
+                <tr key={s.id} className="border-t border-white/5" data-testid="song-route" data-track={s.name} data-channels={chans}>
+                  <td className="py-1.5 pr-2">
+                    <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
+                    {s.name}
+                  </td>
+                  <td className="py-1.5 tabular-nums text-gray-300">
+                    {fixed ? (
+                      <span>
+                        {chans} <span className="text-xs text-gray-500">({fixed.name})</span>
+                      </span>
+                    ) : t ? (
+                      <ChannelInput value={t.ch} label={`${s.name} channel in this song`} onChange={(ch) => setTrack(s.name, ch)} />
+                    ) : (
+                      <span className="text-gray-500">numbered when the song opens</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </>
+    );
+  }
 
   return (
     <>
@@ -269,6 +445,29 @@ export function OutputsView() {
     void getEngine(); // start audio so the device and its channel count are known
   }, []);
 
+  const mixOption = (
+  <label className="flex items-center gap-2 text-sm">
+    <input
+      type="checkbox"
+      checked={setup.mix.enabled}
+      onChange={(e) => update({ mix: { ...setup.mix, enabled: e.target.checked } })}
+      className="h-4 w-4 accent-blue-500"
+      data-testid="mix-enabled"
+    />
+    Also send a stereo mix (no click or guide) to channels
+    <input
+      type="number"
+      min={1}
+      max={31}
+      value={setup.mix.first}
+      aria-label="Stereo mix first channel"
+      onChange={(e) => update({ mix: { ...setup.mix, first: Math.max(1, Math.min(31, Math.round(Number(e.target.value) || 1))) } })}
+      className="h-8 w-14 rounded-md bg-white/10 px-2 tabular-nums"
+    />
+    <span className="tabular-nums text-gray-400">–{setup.mix.first + 1}</span>
+  </label>
+  );
+
   const nextFree = () => {
     const used = new Set(setup.groups.flatMap(groupChannels));
     let c = 1;
@@ -314,6 +513,55 @@ export function OutputsView() {
           ))}
         </div>
         {setup.mode === 'multitrack' && (
+          <div className="mt-3 flex gap-1 rounded-lg bg-white/5 p-1" role="radiogroup" aria-label="Channel layout">
+            {(
+              [
+                ['tracks', 'One channel per track'],
+                ['groups', 'Groups (tracks share channels)'],
+              ] as const
+            ).map(([l, label]) => (
+              <button
+                key={l}
+                type="button"
+                role="radio"
+                aria-checked={setup.layout === l}
+                data-testid={`layout-${l}`}
+                onClick={() => update({ layout: l })}
+                className={cx('h-9 flex-1 rounded-md px-3 text-sm', setup.layout === l ? 'bg-white/20 font-medium text-white' : 'text-gray-400 hover:text-white')}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {setup.mode === 'multitrack' && setup.layout === 'tracks' && (
+          <>
+            <TrackChannels setup={setup} update={update} />
+            <div className="mt-3">{mixOption}</div>
+            {problems.length > 0 && (
+              <ul className="mt-3 space-y-1 rounded-lg bg-amber-500/10 p-3 text-sm text-amber-200" data-testid="output-problems">
+                {problems.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            )}
+            <h3 className="mt-5 text-sm font-semibold">Groups for the Live screen's group mutes</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              In this layout groups don't decide channels; they only gather tracks for the group mute buttons on the Live screen
+              (tap Drums to mute every drum track).
+            </p>
+            <table className="mt-2 w-full text-sm">
+              <tbody>
+                {setup.groups
+                  .filter((g) => !g.click && g.id !== 'guide')
+                  .map((g) => (
+                    <GroupRow key={g.id} g={g} setup={setup} onChange={setGroup} showChannels={false} />
+                  ))}
+              </tbody>
+            </table>
+          </>
+        )}
+        {setup.mode === 'multitrack' && setup.layout === 'groups' && (
           <>
             <p className="mt-3 text-sm text-gray-400">
               Tracks go to a group by their name (e.g. a track called "Kick" goes to Drums). In Multitrack mode the sound goes to
@@ -357,26 +605,7 @@ export function OutputsView() {
               >
                 <Plus size={16} /> Add group
               </Button>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={setup.mix.enabled}
-                  onChange={(e) => update({ mix: { ...setup.mix, enabled: e.target.checked } })}
-                  className="h-4 w-4 accent-blue-500"
-                  data-testid="mix-enabled"
-                />
-                Also send a stereo mix (no click or guide) to channels
-                <input
-                  type="number"
-                  min={1}
-                  max={31}
-                  value={setup.mix.first}
-                  aria-label="Stereo mix first channel"
-                  onChange={(e) => update({ mix: { ...setup.mix, first: Math.max(1, Math.min(31, Math.round(Number(e.target.value) || 1))) } })}
-                  className="h-8 w-14 rounded-md bg-white/10 px-2 tabular-nums"
-                />
-                <span className="tabular-nums text-gray-400">–{setup.mix.first + 1}</span>
-              </label>
+              {mixOption}
               <Button
                 variant="ghost"
                 className="ml-auto"

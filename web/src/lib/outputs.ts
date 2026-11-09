@@ -3,7 +3,11 @@ import { stereoRouting, type Dest, type Monitor, type Routing } from '../audio/c
 /**
  * Output setup for a multi-channel sound card (e.g. Dante Virtual Soundcard).
  * The desk's channel layout is fixed for the church, but every song has
- * different tracks, so tracks are routed to groups by their names.
+ * different tracks. Two layouts:
+ *  - 'tracks' (default): every track has its own channel, kept by its name
+ *    across all songs (Kick is always 3); Click and Guide are fixed.
+ *  - 'groups': tracks share a group's channels by name (Kick + Snare -> Drums).
+ * The keyword groups also drive the Live screen's group mutes in both layouts.
  * Channel numbers here are 1-based, as on the desk.
  */
 export interface OutputGroup {
@@ -21,8 +25,22 @@ export interface OutputGroup {
   notInMix?: boolean;
 }
 
+/** A track name's own channel in the 'tracks' layout. */
+export interface TrackChannel {
+  /** Normalised name (see trackKey). */
+  key: string;
+  /** The name as first seen, for display. */
+  name: string;
+  /** 1-based channel; 0 = no channel left. */
+  ch: number;
+}
+
 export interface OutputSetup {
   mode: 'stereo' | 'multitrack';
+  /** Multitrack: one channel per track (by name), or shared group channels. */
+  layout: 'tracks' | 'groups';
+  /** The 'tracks' layout's channels, by track name, kept across songs. */
+  trackChannels: TrackChannel[];
   /** Output device id ('' = system default). */
   deviceId: string;
   groups: OutputGroup[];
@@ -46,6 +64,8 @@ export const DEFAULT_GROUPS: OutputGroup[] = [
 export function defaultSetup(): OutputSetup {
   return {
     mode: 'stereo',
+    layout: 'tracks',
+    trackChannels: [],
     deviceId: '',
     groups: DEFAULT_GROUPS.map((g) => ({ ...g, keywords: [...g.keywords] })),
     mix: { enabled: false, first: 15 },
@@ -78,6 +98,66 @@ export function groupForStem(setup: OutputSetup, stem: { name: string; output?: 
   return hit ?? groups.find((g) => g.id === FALLBACK_GROUP) ?? groups[groups.length - 1];
 }
 
+/** "Lead Vox", "lead  vox" and "Lead_Vox" are the same track name; "EG 1" and "EG 2" are not. */
+export function trackKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const clickGroupOf = (setup: OutputSetup) => setup.groups.find((g) => g.click);
+const guideGroupOf = (setup: OutputSetup) => setup.groups.find((g) => g.id === 'guide');
+
+/** In the 'tracks' layout: the Click or Guide group a track goes to (by name or pin), or null for its own channel. */
+export function fixedGroupForStem(setup: OutputSetup, stem: { name: string; output?: string }): OutputGroup | null {
+  const fixed = [clickGroupOf(setup), guideGroupOf(setup)].filter((g): g is OutputGroup => !!g);
+  if (stem.output) {
+    const pinned = fixed.find((g) => g.id === stem.output);
+    if (pinned) return pinned;
+  }
+  return fixed.find((g) => g.keywords.some((k) => matchesKeyword(stem.name, k))) ?? null;
+}
+
+export function trackChannelFor(setup: OutputSetup, name: string): TrackChannel | undefined {
+  const key = trackKey(name);
+  return setup.trackChannels.find((t) => t.key === key);
+}
+
+/** Channels not free for a new track: Click, Guide, the stereo mix and every numbered track. */
+function usedChannels(setup: OutputSetup): Set<number> {
+  const used = new Set<number>();
+  for (const g of [clickGroupOf(setup), guideGroupOf(setup)]) if (g) groupChannels(g).forEach((c) => used.add(c));
+  if (setup.mix.enabled) [setup.mix.first, setup.mix.first + 1].forEach((c) => used.add(c));
+  for (const t of setup.trackChannels) if (t.ch > 0) used.add(t.ch);
+  return used;
+}
+
+/**
+ * Give every new track name in `stems` the lowest free channel (Click and
+ * Guide tracks keep theirs). Returns the new setup, or null if nothing changed.
+ */
+export function assignTrackChannels(setup: OutputSetup, stems: { name: string; output?: string }[]): OutputSetup | null {
+  const known = new Set(setup.trackChannels.map((t) => t.key));
+  const used = usedChannels(setup);
+  const added: TrackChannel[] = [];
+  for (const s of stems) {
+    if (fixedGroupForStem(setup, s)) continue;
+    const key = trackKey(s.name);
+    if (!key || known.has(key)) continue;
+    let ch = 1;
+    while (ch <= 32 && used.has(ch)) ch++;
+    if (ch > 32) ch = 0;
+    else used.add(ch);
+    known.add(key);
+    added.push({ key, name: s.name.trim(), ch });
+  }
+  return added.length ? { ...setup, trackChannels: [...setup.trackChannels, ...added] } : null;
+}
+
+const tracksLayout = (setup: OutputSetup) => setup.mode === 'multitrack' && setup.layout === 'tracks';
+
 /** 1-based channels of a group. */
 export function groupChannels(g: { first: number; stereo: boolean }): number[] {
   return g.stereo ? [g.first, g.first + 1] : [g.first];
@@ -91,11 +171,20 @@ export function channelLabel(g: { first: number; stereo: boolean }): string {
 export function buildRouting(setup: OutputSetup, stems: { name: string; output?: string }[]): Routing {
   if (setup.mode === 'stereo' || setup.groups.length === 0) return stereoRouting(stems.length);
   const dest = (g: { first: number; stereo: boolean }): Dest => (g.stereo ? { l: g.first - 1, r: g.first } : { ch: g.first - 1 });
+  const mixDest = dest({ first: setup.mix.first, stereo: true });
   const routing: Routing = {
     stems: stems.map((s) => {
+      if (tracksLayout(setup)) {
+        // every track on its own channel (stereo tracks summed), Click and Guide on theirs
+        const fixed = fixedGroupForStem(setup, s);
+        const t = fixed ? null : trackChannelFor(setup, s.name);
+        const d: Dest[] = fixed ? [dest(fixed)] : t && t.ch > 0 ? [{ ch: t.ch - 1 }] : [];
+        if (setup.mix.enabled && !fixed?.notInMix) d.push(mixDest);
+        return d;
+      }
       const g = groupForStem(setup, s);
       const d: Dest[] = [dest(g)];
-      if (setup.mix.enabled && !g.notInMix) d.push(dest({ first: setup.mix.first, stereo: true }));
+      if (setup.mix.enabled && !g.notInMix) d.push(mixDest);
       return d;
     }),
     click: [],
@@ -112,7 +201,7 @@ export function buildRouting(setup: OutputSetup, stems: { name: string; output?:
 export interface DeskChannel {
   ch: number;
   label: string;
-  kind: 'click' | 'guide' | 'group' | 'mix';
+  kind: 'click' | 'guide' | 'group' | 'track' | 'mix';
   tracks: string[];
   /** Things the app itself adds (its click, spoken cues). */
   extras: string[];
@@ -137,14 +226,28 @@ export function deskChannels(setup: OutputSetup, stems: { name: string; output?:
       had.extras.push(...extras);
     } else byCh.set(ch, { ch, label, kind, tracks: [...tracks], extras: [...extras] });
   };
-  for (const g of setup.groups) {
-    const tracks = stems.filter((s) => groupForStem(setup, s).id === g.id).map((s) => s.name);
+  const addGroup = (g: OutputGroup, tracks: string[]) => {
     const kind: DeskChannel['kind'] = g.click ? 'click' : g.id === 'guide' ? 'guide' : 'group';
     const extras = [...(g.click ? ['App click'] : []), ...(g.id === 'guide' ? ['Spoken cues'] : [])];
     groupChannels(g).forEach((ch, i) => add(ch, g.stereo ? `${g.name} ${i ? 'R' : 'L'}` : g.name, kind, tracks, extras));
+  };
+  if (tracksLayout(setup)) {
+    // the whole church layout: Click, Guide and every numbered track, with this song's tracks on them
+    for (const g of [clickGroupOf(setup), guideGroupOf(setup)]) {
+      if (g) addGroup(g, stems.filter((s) => fixedGroupForStem(setup, s)?.id === g.id).map((s) => s.name));
+    }
+    for (const t of setup.trackChannels) {
+      if (t.ch < 1) continue;
+      const tracks = stems.filter((s) => !fixedGroupForStem(setup, s) && trackKey(s.name) === t.key).map((s) => s.name);
+      add(t.ch, t.name, 'track', tracks, []);
+    }
+  } else {
+    for (const g of setup.groups) addGroup(g, stems.filter((s) => groupForStem(setup, s).id === g.id).map((s) => s.name));
   }
   if (setup.mix.enabled) {
-    const inMix = stems.filter((s) => !groupForStem(setup, s).notInMix).map((s) => s.name);
+    const inMix = stems
+      .filter((s) => !(tracksLayout(setup) ? fixedGroupForStem(setup, s) : groupForStem(setup, s))?.notInMix)
+      .map((s) => s.name);
     add(setup.mix.first, 'Mix L', 'mix', inMix, []);
     add(setup.mix.first + 1, 'Mix R', 'mix', inMix, []);
   }
@@ -172,10 +275,20 @@ export function channelProblems(setup: OutputSetup, available: number): string[]
   }
   const out: string[] = [];
   const used = new Map<number, string>();
+  const fixedGroups = [clickGroupOf(setup), guideGroupOf(setup)].filter((g): g is OutputGroup => !!g);
   const entries = [
-    ...setup.groups.map((g) => ({ name: g.name, chans: groupChannels(g) })),
+    ...(tracksLayout(setup)
+      ? [
+          ...fixedGroups.map((g) => ({ name: g.name, chans: groupChannels(g) })),
+          ...setup.trackChannels.filter((t) => t.ch > 0).map((t) => ({ name: t.name, chans: [t.ch] })),
+        ]
+      : setup.groups.map((g) => ({ name: g.name, chans: groupChannels(g) }))),
     ...(setup.mix.enabled ? [{ name: 'Stereo mix', chans: [setup.mix.first, setup.mix.first + 1] }] : []),
   ];
+  if (tracksLayout(setup)) {
+    const none = setup.trackChannels.filter((t) => t.ch < 1).map((t) => t.name);
+    if (none.length) out.push(`Channels ran out: ${none.join(', ')} ${none.length === 1 ? 'has' : 'have'} no channel. Free some up below.`);
+  }
   for (const e of entries) {
     const missing = e.chans.filter((c) => c > available);
     if (missing.length) {
@@ -192,6 +305,13 @@ export function channelProblems(setup: OutputSetup, available: number): string[]
   return [...new Set(out)];
 }
 
+/** The layout as text ("1 Click", "2 Guide", "3 Kick" …), to set up the desk or Virtual Vi. */
+export function channelList(setup: OutputSetup): string {
+  return deskChannels(setup, [])
+    .map((c) => `${c.ch} ${c.label}`)
+    .join('\n');
+}
+
 const KEY = 'musical.outputs';
 
 export function loadSetup(): OutputSetup {
@@ -202,6 +322,11 @@ export function loadSetup(): OutputSetup {
       const d = defaultSetup();
       return {
         mode: s.mode === 'multitrack' ? 'multitrack' : 'stereo',
+        // setups saved before track channels existed move to one channel per track
+        layout: s.layout === 'groups' ? 'groups' : 'tracks',
+        trackChannels: Array.isArray(s.trackChannels)
+          ? s.trackChannels.filter((t) => t && typeof t.key === 'string' && typeof t.name === 'string' && typeof t.ch === 'number')
+          : [],
         deviceId: typeof s.deviceId === 'string' ? s.deviceId : '',
         groups: Array.isArray(s.groups) && s.groups.length ? s.groups : d.groups,
         mix: s.mix && typeof s.mix.first === 'number' ? { enabled: !!s.mix.enabled, first: s.mix.first } : d.mix,

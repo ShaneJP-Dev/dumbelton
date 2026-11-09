@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { buildRouting, channelProblems, defaultSetup, deskChannels, groupForStem, matchesKeyword, monitorFor } from './outputs';
+import {
+  assignTrackChannels,
+  buildRouting,
+  channelList,
+  channelProblems,
+  defaultSetup,
+  deskChannels,
+  groupForStem,
+  loadSetup,
+  matchesKeyword,
+  monitorFor,
+  trackKey,
+  type OutputSetup,
+} from './outputs';
 
-const multi = () => ({ ...defaultSetup(), mode: 'multitrack' as const });
+/** Multitrack with the shared-group layout (the original church layout). */
+const multi = (): OutputSetup => ({ ...defaultSetup(), mode: 'multitrack', layout: 'groups' });
+/** Multitrack with one channel per track (the default). */
+const perTrack = (): OutputSetup => ({ ...defaultSetup(), mode: 'multitrack' });
 const g = (name: string, output?: string) => groupForStem(multi(), { name, output }).name;
 
 describe('output groups', () => {
@@ -122,5 +138,79 @@ describe('the Desk panel', () => {
     expect(monitorFor(multi(), 32, null)).toBeNull();
     expect(monitorFor(multi(), 32, 5)).toBeNull();
     expect(monitorFor(defaultSetup(), 2, 5)).toBeNull(); // stereo mode plays normally
+  });
+});
+
+describe('one channel per track', () => {
+  const songA = [{ name: 'Click' }, { name: 'Guide' }, { name: 'Kick' }, { name: 'Snare' }, { name: 'Bass' }, { name: 'Keys' }];
+  const songB = [{ name: 'Click Track' }, { name: 'kick' }, { name: 'AG' }, { name: 'Bass' }, { name: 'Lead_Vox' }];
+
+  it('is the default layout, and old saved setups move to it', () => {
+    expect(defaultSetup().layout).toBe('tracks');
+    // a setup saved before this layout existed (unit tests run without a browser: a stand-in storage)
+    const saved = JSON.stringify({ mode: 'multitrack', groups: defaultSetup().groups });
+    const g = globalThis as { localStorage?: unknown };
+    const had = g.localStorage;
+    g.localStorage = { getItem: () => saved, setItem: () => undefined };
+    try {
+      expect(loadSetup()).toMatchObject({ mode: 'multitrack', layout: 'tracks', trackChannels: [] });
+    } finally {
+      g.localStorage = had;
+    }
+  });
+
+  it('normalises track names', () => {
+    expect(trackKey('Lead_Vox')).toBe(trackKey('lead  vox'));
+    expect(trackKey('EG 1')).not.toBe(trackKey('EG 2'));
+  });
+
+  it('numbers new track names from channel 3 (Click and Guide keep 1 and 2) and keeps them across songs', () => {
+    const a = assignTrackChannels(perTrack(), songA)!;
+    expect(a.trackChannels.map((t) => `${t.ch} ${t.name}`)).toEqual(['3 Kick', '4 Snare', '5 Bass', '6 Keys']);
+    const b = assignTrackChannels(a, songB)!;
+    // Kick and Bass keep theirs, the new names take the next free channels
+    expect(b.trackChannels.map((t) => `${t.ch} ${t.name}`)).toEqual(['3 Kick', '4 Snare', '5 Bass', '6 Keys', '7 AG', '8 Lead_Vox']);
+    expect(assignTrackChannels(b, songA)).toBeNull(); // nothing new
+  });
+
+  it('fills gaps and never takes the stereo mix pair', () => {
+    const s = perTrack();
+    s.mix = { enabled: true, first: 5 };
+    s.trackChannels = [{ key: 'kick', name: 'Kick', ch: 4 }];
+    const a = assignTrackChannels(s, [{ name: 'Snare' }, { name: 'Bass' }, { name: 'Keys' }])!;
+    expect(a.trackChannels.map((t) => t.ch)).toEqual([4, 3, 7, 8]);
+  });
+
+  it('runs out after channel 32 and says so', () => {
+    const many = Array.from({ length: 32 }, (_, i) => ({ name: `Track ${i + 1}` }));
+    const a = assignTrackChannels(perTrack(), many)!;
+    expect(a.trackChannels.filter((t) => t.ch === 0).map((t) => t.name)).toEqual(['Track 31', 'Track 32']);
+    expect(channelProblems(a, 32)[0]).toMatch(/^Channels ran out: Track 31, Track 32 have no channel/);
+  });
+
+  it('routes every track to its own single channel; stereo tracks are summed', () => {
+    const setup = assignTrackChannels(perTrack(), songA)!;
+    const r = buildRouting(setup, [{ name: 'Keys' }, { name: 'Click' }, { name: 'Kick' }, { name: 'Guide' }, { name: 'Unknown' }]);
+    expect(r.stems).toEqual([[{ ch: 5 }], [{ ch: 0 }], [{ ch: 2 }], [{ ch: 1 }], []]);
+    expect(r.click).toEqual([0]);
+    expect(r.cue).toEqual([1]);
+    setup.mix.enabled = true;
+    expect(buildRouting(setup, [{ name: 'Kick' }, { name: 'Click' }]).stems).toEqual([[{ ch: 2 }, { l: 14, r: 15 }], [{ ch: 0 }]]);
+  });
+
+  it('flags a channel used twice', () => {
+    const setup = assignTrackChannels(perTrack(), songA)!;
+    setup.trackChannels[1].ch = 3; // Snare onto Kick's channel
+    expect(channelProblems(setup, 32)).toContain('Channel 3 is used by both Kick and Snare.');
+  });
+
+  it('the Desk panel and the channel list show the whole layout', () => {
+    const setup = assignTrackChannels(assignTrackChannels(perTrack(), songA)!, songB)!;
+    const d = deskChannels(setup, songB);
+    expect(d.map((c) => `${c.ch} ${c.label}`)).toEqual(['1 Click', '2 Guide', '3 Kick', '4 Snare', '5 Bass', '6 Keys', '7 AG', '8 Lead_Vox']);
+    expect(d[0].tracks).toEqual(['Click Track']);
+    expect(d[2].tracks).toEqual(['kick']);
+    expect(d[3].tracks).toEqual([]); // no snare in song B
+    expect(channelList(setup)).toBe('1 Click\n2 Guide\n3 Kick\n4 Snare\n5 Bass\n6 Keys\n7 AG\n8 Lead_Vox');
   });
 });

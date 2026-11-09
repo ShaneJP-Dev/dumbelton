@@ -144,23 +144,22 @@ a Mac:
 2. Open the app in **Chrome or Edge** and go to **Outputs** (on the Songs page, or in a song's menu).
    Choose "Dante Virtual Soundcard" as the output device. Device names appear after you allow the
    microphone prompt; nothing is recorded. In Safari, choose DVS in System Settings → Sound instead.
-3. Choose **Multitrack**. Tracks go to channel groups by their names, and the layout is saved in this
-   browser:
-
-   | Group | Track names containing | Channels |
-   | --- | --- | --- |
-   | Click (plus the app's click and count-in) | click, metronome, count | 1 |
-   | Guide | guide, cue | 2 |
-   | Drums | drum, kick, snare, perc, hat, tom, loop | 3–4 |
-   | Bass | bass, sub, 808 | 5 |
-   | Keys | key, piano, rhodes, organ, synth, pad | 6–7 |
-   | Guitars | gtr, guitar, ag, eg | 8–9 |
-   | Vocals | vox, vocal, voice, bgv, choir | 10–11 |
-   | Other | anything else | 12–13 |
-
-   Change channels, keywords and mono/stereo, add groups, optionally send a stereo mix (without click and
-   guide) to two more channels, and pin a song's track to a different group under **This song**.
-4. Press **Test** on each group and check the beep arrives where you expect in Dante Controller and on
+3. Choose **Multitrack**. Every track gets **its own channel**, and the layout is saved in this browser:
+   - **Click** (plus the app's click and count-in) is channel **1** and **Guide** (plus spoken cues) is
+     channel **2**: tracks whose names contain click / metronome / count or guide / cue go there.
+   - Every other track gets the next free channel the first time its name appears (Kick 3, Snare 4,
+     Bass 5…), and **keeps that channel in every song**, so the desk's channel settings stay right from
+     song to song. "Lead Vox" and "lead vox" count as the same name; "EG 1" and "EG 2" are different.
+     Stereo tracks are summed onto one channel, so up to 30 tracks fit.
+   - Change any number in the **Track channels** list (or under **This song**; a change applies to every
+     song with that track name). **Copy channel list** gives the whole layout as text ("1 Click, 2 Guide,
+     3 Kick…") to set up the desk's channel names. **Renumber all** starts again from channel 3, oldest
+     song first.
+   - Optionally send a stereo mix (without click and guide) to two more channels.
+   - The groups (Drums, Bass, Keys, Guitars, Vocals, Other, by track name) no longer decide channels in
+     this layout: they gather tracks for the Live screen's group mute buttons. If you'd rather have
+     tracks share channels by group (Kick and Snare together on Drums 3–4…), choose **Groups** instead.
+4. Press **Test** on each channel and check the beep arrives where you expect in Dante Controller and on
    the desk.
 
 Browsers send up to 32 channels. In Multitrack mode the sound goes to the desk, not the laptop's
@@ -272,7 +271,8 @@ back when you leave Live.
 - **Tap a track** to mute it, tap again to unmute.
 - **Tap a group** (Click, Guide, Drums, Bass, Keys, Guitars, Vocals, Other) to mute all its tracks. These
   are the groups from the Outputs screen, so tracks join them by name and follow any changes you make
-  there. Muting **Click** also silences the app's own click.
+  there (even with one channel per track, where groups only gather tracks for these buttons). Muting
+  **Click** also silences the app's own click.
 - **Mute all:** hold it for 2 seconds to silence everything, including the click. The song keeps playing
   silently, so you can bring it back in time. Tap it to unmute; whatever was muted before stays muted.
 - Moving to the next song keeps group mutes and Mute all on (like mute groups on a desk). Track mutes

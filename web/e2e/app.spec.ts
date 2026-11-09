@@ -272,7 +272,7 @@ test.describe.serial('song workflow', () => {
     await expect(list.locator('[data-testid=live-song][data-name="E2E Song"]')).toContainText('Now');
   });
 
-  test('multitrack outputs: each group lands on its own channels', async () => {
+  test('multitrack outputs: every track gets its own channel, kept by name; groups still work', async () => {
     // per-channel peak levels of the engine's 32 outputs, as the desk receives them (the Desk panel's meters)
     const levels = () =>
       page.evaluate(async () => {
@@ -302,9 +302,32 @@ test.describe.serial('song workflow', () => {
     await page.goto('/#/outputs');
     await page.getByTestId('mode-multitrack').click();
     const routes = page.getByTestId('song-routing');
-    await routes.getByLabel('Song').selectOption({ label: 'E2E Song' });
+    await routes.getByLabel('Song', { exact: true }).selectOption({ label: 'E2E Song' });
     const ch = (track: string) => routes.locator(`[data-testid=song-route][data-track="${track}"]`).getAttribute('data-channels');
-    expect([await ch('click'), await ch('drums'), await ch('bass'), await ch('keys'), await ch('lead')]).toEqual(['1', '3–4', '5', '6–7', '12–13']);
+    // one channel per track (the default): Click 1, Guide 2, then each track name in turn (the song lists bass first)
+    await expect(page.getByTestId('layout-tracks')).toHaveAttribute('aria-checked', 'true');
+    await expect.poll(async () => [await ch('click'), await ch('bass'), await ch('drums'), await ch('keys'), await ch('lead')]).toEqual([
+      '1',
+      '3',
+      '4',
+      '5',
+      '6',
+    ]);
+    // the same names in another song keep their channels
+    await routes.getByLabel('Song', { exact: true }).selectOption({ label: 'Second Song' });
+    expect([await ch('drums'), await ch('lead')]).toEqual(['4', '6']);
+    await routes.getByLabel('Song', { exact: true }).selectOption({ label: 'E2E Song' });
+    const tracks = page.getByTestId('track-channel');
+    expect(await tracks.evaluateAll((els) => els.map((e) => `${e.getAttribute('data-ch')} ${e.getAttribute('data-name')}`))).toEqual([
+      '3 bass',
+      '4 drums',
+      '5 keys',
+      '6 lead',
+    ]);
+    // the list can be copied for setting up the desk
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.getByTestId('copy-channels').click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('1 Click\n2 Guide\n3 bass\n4 drums\n5 keys\n6 lead');
 
     // play the first chorus (all instruments) and look at every output channel
     await engine('seek', 48000 * 26);
@@ -312,17 +335,28 @@ test.describe.serial('song workflow', () => {
     let peak = await levels();
     const on = (k: number) => peak[k] > 0.01;
     // the song opened in Live (the setlist is running), where nothing is muted: the click track plays on 1
-    expect([0, 2, 3, 4, 5, 6, 11, 12].filter(on)).toEqual([0, 2, 3, 4, 5, 6, 11, 12]); // click, drums, bass, keys, lead (Other)
-    // guide (none), guitars, vocals and unused channels are silent
-    expect([1, 7, 8, 9, 10, 13, 14, 20, 31].filter(on)).toEqual([]);
+    expect([0, 2, 3, 4, 5].filter(on)).toEqual([0, 2, 3, 4, 5]); // click, bass, drums, keys, lead
+    // guide (none) and unused channels are silent
+    expect([1, 6, 7, 8, 12, 13, 20, 31].filter(on)).toEqual([]);
 
-    // move Bass to channel 14
-    await page.getByLabel('Bass first channel').fill('14');
+    // move bass to channel 14
+    await page.getByLabel('bass channel', { exact: true }).fill('14');
     await expect.poll(() => ch('bass')).toBe('14');
     await page.waitForTimeout(150);
     peak = await levels();
     expect(peak[13]).toBeGreaterThan(0.01);
-    expect(peak[4]).toBe(0);
+    expect(peak[2]).toBe(0);
+
+    // the Groups layout still shares channels by group
+    await page.getByTestId('layout-groups').click();
+    await expect.poll(async () => [await ch('click'), await ch('drums'), await ch('bass'), await ch('keys'), await ch('lead')]).toEqual([
+      '1',
+      '3–4',
+      '5',
+      '6–7',
+      '12–13',
+    ]);
+    await page.getByTestId('layout-tracks').click();
 
     // test tone on the Guide channel (2), with playback stopped
     await engine('pause');
@@ -598,7 +632,7 @@ test.describe.serial('song workflow', () => {
     };
     await page.goto('/#/outputs');
     await page.getByTestId('mode-multitrack').click();
-    await page.getByLabel('Bass first channel').fill('5'); // an earlier test moved it to 14
+    await page.getByLabel('bass channel', { exact: true }).fill('3'); // an earlier test moved it to 14
     await page.goto('/');
     await page.getByTestId('song-card').filter({ hasText: 'E2E Song' }).click();
     await page.waitForURL(/#\/song\//);
@@ -606,22 +640,15 @@ test.describe.serial('song workflow', () => {
     await page.getByTestId('desk-toggle').click();
     await expect(page.getByTestId('desk-panel')).toBeVisible();
     const strips = page.getByTestId('desk-strip');
-    expect(await strips.evaluateAll((els) => els.map((e) => e.getAttribute('data-label')))).toEqual([
-      'Click',
-      'Guide',
-      'Drums L',
-      'Drums R',
-      'Bass',
-      'Keys L',
-      'Keys R',
-      'Guitars L',
-      'Guitars R',
-      'Vocals L',
-      'Vocals R',
-      'Other L',
-      'Other R',
+    // one strip per channel: Click, Guide, then every track on its own channel
+    expect(await strips.evaluateAll((els) => els.map((e) => `${e.getAttribute('data-ch')} ${e.getAttribute('data-label')}`))).toEqual([
+      '1 Click',
+      '2 Guide',
+      '3 bass',
+      '4 drums',
+      '5 keys',
+      '6 lead',
     ]);
-    await expect(page.locator('[data-testid=desk-strip][data-ch="12"]')).toContainText('lead');
     // this test browser has a 2-channel output, like a laptop: it plays the full mix
     expect(await page.evaluate(() => (window as unknown as E).__engine.outputChannels)).toBeLessThanOrEqual(2);
     await expect.poll(() => page.evaluate(() => (window as unknown as E).__engine.monitor)).toEqual({ kind: 'mix' });
@@ -637,14 +664,13 @@ test.describe.serial('song workflow', () => {
       const v = await strip(ch).getAttribute('data-level');
       return v === '-inf' ? -Infinity : Number(v);
     };
-    await expect.poll(() => level(3), { timeout: 5000 }).toBeGreaterThan(-40); // drums
-    await expect.poll(() => level(5)).toBeGreaterThan(-40); // bass
+    await expect.poll(() => level(4), { timeout: 5000 }).toBeGreaterThan(-40); // drums
+    await expect.poll(() => level(3)).toBeGreaterThan(-40); // bass
     expect(await level(2)).toBe(-Infinity); // nothing on the Guide channel in this song
-    expect(await level(8)).toBe(-Infinity); // no guitars
 
     // listen to the bass channel on the laptop: outputs 1-2 then carry just the bass
-    await strip(5).getByTestId('desk-listen').click();
-    await expect.poll(() => page.evaluate(() => (window as unknown as E).__engine.monitor)).toEqual({ kind: 'channel', ch: 4 });
+    await strip(3).getByTestId('desk-listen').click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as E).__engine.monitor)).toEqual({ kind: 'channel', ch: 2 });
     // over the same half second: the loudest the laptop's output 1 got, and the loudest the Bass and Drums strips showed
     const m = await page.evaluate(async () => {
       const e = (window as unknown as E).__engine;
@@ -665,8 +691,8 @@ test.describe.serial('song workflow', () => {
         await new Promise((r) => setTimeout(r, 20));
         a.getFloatTimeDomainData(buf);
         for (const v of buf) out = Math.max(out, Math.abs(v));
-        bass = Math.max(bass, stripDb(5));
-        drums = Math.max(drums, stripDb(3));
+        bass = Math.max(bass, stripDb(3));
+        drums = Math.max(drums, stripDb(4));
       }
       split.disconnect();
       return { out: 20 * Math.log10(out), bass, drums };
@@ -675,7 +701,7 @@ test.describe.serial('song workflow', () => {
     expect(m.bass).toBeGreaterThan(-40);
     expect(Math.abs(m.out - m.bass)).toBeLessThan(3);
     // tap again: back to the full mix
-    await strip(5).getByTestId('desk-listen').click();
+    await strip(3).getByTestId('desk-listen').click();
     await expect.poll(() => page.evaluate(() => (window as unknown as E).__engine.monitor)).toEqual({ kind: 'mix' });
 
     await page.evaluate(() => (window as unknown as E).__engine.pause());
