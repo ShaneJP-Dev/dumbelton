@@ -4,12 +4,11 @@ import { Back, More, Plus, Trash } from '../components/icons';
 import { ImportDialog } from '../components/ImportDialog';
 import { LivePanel } from '../components/LivePanel';
 import { SectionEditor } from '../components/SectionEditor';
-import { seekTo, Timeline } from '../components/Timeline';
+import { Timeline } from '../components/Timeline';
 import { Transport } from '../components/Transport';
 import { Button, cx } from '../components/ui';
 import { useShortcuts } from '../hooks/useShortcuts';
 import { arrangementLayout } from '../lib/layout';
-import { sectionIndexAt } from '../lib/sections';
 import {
   addSectionAtFrame,
   deleteProject,
@@ -23,6 +22,7 @@ import {
   togglePlay,
 } from '../state/actions';
 import { exitLive, nextSong, preloadNextSong, restoreLiveState } from '../state/live';
+import { jumpToSection as jumpTo, stepSection } from '../state/controls';
 import { getEngine, peekEngine } from '../state/engine';
 import { getState, setState, useApp, type Mode } from '../state/store';
 
@@ -48,6 +48,9 @@ function SongMenu({ onAddTracks }: { onAddTracks: () => void }) {
           </button>
           <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-white/10" onClick={() => { setOpen(false); navigate({ name: 'outputs' }); }}>
             Outputs (Dante, channels)…
+          </button>
+          <button type="button" className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-white/10" onClick={() => { setOpen(false); navigate({ name: 'controls' }); }}>
+            Controls (MIDI pedals)…
           </button>
           <button
             type="button"
@@ -97,24 +100,7 @@ export function SongView({ id }: { id: string }) {
     setMode(m);
   };
 
-  const jumpToSection = useCallback((i: number) => {
-    const { current, mode: m, quantize } = getState();
-    if (!current || i < 0 || i >= current.sections.length) return;
-    if (m === 'live') {
-      void getEngine().then((e) => e.queueJump(i, quantize)); // the engine moves directly when stopped
-      return;
-    }
-    setState({ selected: current.sections[i].id });
-    if (getState().loop) syncProgram();
-    seekTo(current.sections[i].start);
-  }, []);
-
-  const currentIndex = () => {
-    const { current, mode: m, transport } = getState();
-    if (!current) return 0;
-    if (m === 'live') return transport.pending?.to ?? transport.segment;
-    return sectionIndexAt(current.sections, peekEngine()?.clock.now() ?? 0);
-  };
+  const jumpToSection = useCallback((i: number) => jumpTo(i), []);
 
   useShortcuts(
     useCallback(
@@ -133,11 +119,11 @@ export function SongView({ id }: { id: string }) {
           return true;
         }
         if (e.key === 'ArrowRight' || e.key === 'PageDown') {
-          jumpToSection(currentIndex() + 1);
+          stepSection(1);
           return true;
         }
         if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-          jumpToSection(Math.max(0, currentIndex() - 1));
+          stepSection(-1);
           return true;
         }
         if (/^[1-9]$/.test(e.key)) {

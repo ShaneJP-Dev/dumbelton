@@ -7,6 +7,8 @@ import { LibraryView } from './views/LibraryView';
 import { SongView } from './views/SongView';
 import { SetlistsView, SetlistView } from './views/SetlistsView';
 import { OutputsView } from './views/OutputsView';
+import { ControlsView } from './views/ControlsView';
+import { autoConnectMidi } from './state/midi';
 
 export default function App() {
   const route = useApp((s) => s.route);
@@ -17,6 +19,7 @@ export default function App() {
     window.addEventListener('hashchange', sync);
     void refreshLibrary();
     void requestPersistence();
+    autoConnectMidi();
     const onHide = () => void flushSaves();
     window.addEventListener('pagehide', onHide);
     return () => {
@@ -32,6 +35,7 @@ export default function App() {
       {route.name === 'setlists' && <SetlistsView />}
       {route.name === 'setlist' && <SetlistView id={route.id} />}
       {route.name === 'outputs' && <OutputsView />}
+      {route.name === 'controls' && <ControlsView />}
       <ToastHost />
     </div>
   );

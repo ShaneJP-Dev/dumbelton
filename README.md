@@ -16,7 +16,7 @@ bridge and outro, as coloured blocks above the tracks. Then:
   **Spoken cues** say the next part ("Chorus") on the Guide channel a bar before it starts.
   Live is "super live": every track plays, whatever was muted or soloed in Practice (see
   [Muting in Live](#muting-in-live)). Setlists load the next song in advance. Works with keyboard
-  shortcuts and Bluetooth page-turner pedals.
+  shortcuts, Bluetooth page-turner pedals and MIDI foot controllers or pads.
 
 If a song has a **guide track** that speaks the parts ("Intro", "Verse 2", "Chorus", or in Spanish
 "Verso", "Coro", "Puente"), the sections are placed and named from what it says. See
@@ -249,6 +249,23 @@ back when you leave Live.
 - Moving to the next song keeps group mutes and Mute all on (like mute groups on a desk). Track mutes
   start fresh, because every song has different tracks.
 
+## MIDI pedals and pads
+
+On the **Controls** page (Songs page header, or the ⋯ menu on a song), tap **Connect MIDI** and plug in
+a USB or Bluetooth MIDI foot controller or pad. Then, for each job, tap **Learn** and press the pedal you
+want for it:
+
+- play / stop, next or previous section, sections 1–8, next or previous song in the setlist
+- Repeat on / off, spoken cues on / off
+- **Mute all**: hold the pedal for 2 seconds, as on screen (a pedal that only sends program changes
+  mutes at once); press it again to unmute
+- unmute everything, and a mute on / off for each Outputs group (Click, Guide, Drums...)
+
+Notes, CC switches and program changes all work; a CC pedal that keeps sending "pressed" only counts
+once. The choices are saved in the browser, and MIDI reconnects by itself the next time. MIDI needs
+Chrome or Edge (Safari and iPads don't have it). Bluetooth page-turner pedals don't need any of this:
+they send arrow keys.
+
 ## Keyboard
 
 | Key | Practice | Live |
@@ -326,7 +343,7 @@ pnpm e2e
 
 runs the end-to-end tests (Playwright, Chromium). They start both servers and drive the app with a
 synthetic song: import, section detection, seek, loop, mute, arrangement export length, a Live
-quantised jump, Repeat, spoken cues on the Guide channel, key change and export length, Live track, group and mute-all mutes, sending a guide track, working without the
+quantised jump, Repeat, spoken cues on the Guide channel, key change and export length, MIDI pedals (with a stand-in MIDI device), Live track, group and mute-all mutes, sending a guide track, working without the
 analyzer, and importing a folder of `.m4a` stems with their Ableton `.asd` files (that test needs ffmpeg
 to create the m4a files, and is skipped without it).
 

@@ -5,6 +5,7 @@ import { loadFade, type FadeBeats } from '../lib/fade';
 import { loadSetup, type OutputSetup } from '../lib/outputs';
 import type { Project, Setlist } from '../lib/types';
 import type { CueLang } from '../lib/voice';
+import { loadMidiMap, type MidiMap } from '../lib/midi';
 
 function loadCues(): boolean {
   try {
@@ -21,7 +22,8 @@ export type Route =
   | { name: 'song'; id: string }
   | { name: 'setlists' }
   | { name: 'setlist'; id: string }
-  | { name: 'outputs' };
+  | { name: 'outputs' }
+  | { name: 'controls' };
 
 export interface Transport {
   playing: boolean;
@@ -68,6 +70,14 @@ export interface AppState {
   cues: boolean;
   /** The computer voice for spoken cues, fetched from the analysis server. */
   cueVoice: { status: 'idle' | 'loading' | 'ready' | 'unavailable'; lang?: CueLang; voice?: string; message?: string };
+  /** MIDI pedals and pads (Web MIDI). */
+  midi: { status: 'off' | 'unsupported' | 'connecting' | 'on' | 'denied'; inputs: string[]; message?: string };
+  /** Which pedal does what (saved in this browser). */
+  midiMap: MidiMap;
+  /** The action waiting for a pedal press on the Controls page. */
+  midiLearn: string | null;
+  /** The last MIDI message, for the Controls page monitor. */
+  midiLast: string | null;
   /** Open the next song in the current mode instead of Practice (Live song list). */
   keepModeOnOpen: boolean;
   toast: { text: string; kind: 'info' | 'error' } | null;
@@ -101,6 +111,10 @@ export const useApp = create<AppState>(() => ({
   liveRepeat: false,
   cues: loadCues(),
   cueVoice: { status: 'idle' },
+  midi: { status: 'off', inputs: [] },
+  midiMap: loadMidiMap(),
+  midiLearn: null,
+  midiLast: null,
   keepModeOnOpen: false,
   toast: null,
   engineError: null,

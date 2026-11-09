@@ -21,6 +21,7 @@ export function routeFromHash(hash: string): Route {
   if (a === 'setlists') return { name: 'setlists' };
   if (a === 'setlist' && b) return { name: 'setlist', id: decodeURIComponent(b) };
   if (a === 'outputs') return { name: 'outputs' };
+  if (a === 'controls') return { name: 'controls' };
   return { name: 'library' };
 }
 
@@ -34,6 +35,8 @@ export function hashFor(r: Route): string {
       return `#/setlist/${encodeURIComponent(r.id)}`;
     case 'outputs':
       return '#/outputs';
+    case 'controls':
+      return '#/controls';
     default:
       return '#/';
   }
@@ -305,6 +308,12 @@ export function toggleLiveTrack(stemId: string): void {
 /** Mute or unmute an output group (Click, Guide, Drums…) on the Live screen. */
 export function toggleLiveGroup(groupId: string): void {
   setState({ liveMutedGroups: toggled(getState().liveMutedGroups, groupId) });
+  syncStems();
+}
+
+/** Clear every Live mute: tracks, groups and Mute all. */
+export function unmuteEverything(): void {
+  setState({ liveMuted: [], liveMutedGroups: [], liveMuteAll: false });
   syncStems();
 }
 

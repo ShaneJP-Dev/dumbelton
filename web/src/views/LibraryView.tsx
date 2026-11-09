@@ -85,6 +85,9 @@ export function LibraryView() {
           <Button variant="ghost" onClick={() => navigate({ name: 'outputs' })} data-testid="outputs-link">
             Outputs
           </Button>
+          <Button variant="ghost" onClick={() => navigate({ name: 'controls' })} data-testid="controls-link">
+            Controls
+          </Button>
           <Button variant="ghost" onClick={() => setBackup('all')} data-testid="backup-link">
             Back up &amp; restore
           </Button>

@@ -669,6 +669,66 @@ test('a guide track is sent with the mix, and its spoken cues place the sections
   await expect(page.getByTestId('from-guide')).toBeVisible();
 });
 
+test('MIDI pedals: learn a pedal for a job, then it drives Live', async ({ browser }) => {
+  const context = await browser.newContext();
+  // a stand-in MIDI foot controller: the test "presses" it with window.__midiSend
+  await context.addInitScript(() => {
+    const input = { id: 'p1', name: 'Test Pedal', state: 'connected', onmidimessage: null as null | ((e: { data: Uint8Array }) => void) };
+    const access = { inputs: new Map([['p1', input]]), outputs: new Map(), onstatechange: null, sysexEnabled: false };
+    (navigator as unknown as { requestMIDIAccess: () => Promise<unknown> }).requestMIDIAccess = async () => access;
+    (window as unknown as { __midiSend: (b: number[]) => void }).__midiSend = (b) => input.onmidimessage?.({ data: new Uint8Array(b) });
+  });
+  const page = await context.newPage();
+  const send = (...msgs: number[][]) =>
+    page.evaluate((m) => m.forEach((b) => (window as unknown as { __midiSend: (b: number[]) => void }).__midiSend(b)), msgs);
+  await importSong(page, 'MIDI Song');
+  await expect(page.getByTestId('section')).toHaveCount(8, { timeout: 30_000 });
+
+  await page.goto('/#/controls');
+  await page.getByTestId('midi-connect').click();
+  await expect(page.getByTestId('midi-inputs')).toContainText('Test Pedal');
+  const row = (a: string) => page.locator(`[data-testid=midi-action][data-action="${a}"]`);
+  await row('next-section').getByTestId('midi-learn').click();
+  await expect(row('next-section').getByTestId('midi-trigger')).toHaveText('Press a pedal…');
+  await send([0xb0, 64, 127], [0xb0, 64, 0]);
+  await expect(row('next-section').getByTestId('midi-trigger')).toHaveText('CC 64 · ch 1');
+  await row('mute-all').getByTestId('midi-learn').click();
+  await send([0x90, 60, 100], [0x80, 60, 0]);
+  await expect(row('mute-all').getByTestId('midi-trigger')).toHaveText('Note C4 · ch 1');
+  await expect(page.getByTestId('midi-last')).toContainText('Note C4 · ch 1 · released');
+  // the map is saved, and MIDI reconnects by itself next time
+  await page.reload();
+  await expect(page.getByTestId('midi-inputs')).toContainText('Test Pedal');
+  await expect(row('next-section').getByTestId('midi-trigger')).toHaveText('CC 64 · ch 1');
+
+  await page.goto('/');
+  await page.getByTestId('song-card').filter({ hasText: 'MIDI Song' }).click();
+  await page.waitForURL(/#\/song\//);
+  await page.getByRole('button', { name: 'Live', exact: true }).click();
+  await expect.poll(async () => (await report(page))?.segment).toBe(0);
+  // the pedal moves to the next section (stopped: straight there)
+  await send([0xb0, 64, 127], [0xb0, 64, 0]);
+  await expect.poll(async () => (await report(page)).segment).toBe(1);
+  // a pedal that repeats its "pressed" value only counts once
+  await send([0xb0, 64, 127], [0xb0, 64, 127], [0xb0, 64, 127], [0xb0, 64, 0]);
+  await expect.poll(async () => (await report(page)).segment).toBe(2);
+
+  // Mute all: a short press does nothing, a 2-second hold mutes, the next press unmutes
+  const all = page.getByTestId('live-mute-all');
+  await send([0x90, 60, 100]);
+  await page.waitForTimeout(500);
+  await send([0x80, 60, 0]);
+  await page.waitForTimeout(1800);
+  await expect(all).toHaveAttribute('data-muted', 'false');
+  await send([0x90, 60, 100]);
+  await page.waitForTimeout(2300);
+  await send([0x80, 60, 0]);
+  await expect(all).toHaveAttribute('data-muted', 'true');
+  await send([0x90, 60, 100], [0x80, 60, 0]);
+  await expect(all).toHaveAttribute('data-muted', 'false');
+  await context.close();
+});
+
 test('imports m4a stems from a folder, skipping Ableton .asd files', async ({ page }) => {
   test.skip(!existsSync(resolve(M4A_DIR, 'click.m4a')), 'needs ffmpeg to make the m4a test files');
   await page.goto('/');
