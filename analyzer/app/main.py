@@ -4,6 +4,9 @@ POST /api/jobs        multipart field `audio` (the mix), optional `guide`
                       (the guide track alone: its spoken cues place sections) -> {"id": ...}
 GET  /api/jobs/{id}   -> {"id", "status", "progress", "result"?, "error"?}
 GET  /api/health      -> {"ok": true, "backend": ..., "speech": {"en": bool, "es": bool}}
+GET  /api/voice/{lang} -> {"available", "voice"?, "message"?, "kinds"}: spoken cue words
+                      made with the computer's voice (see voice.py)
+GET  /api/voice/{lang}/{kind}.wav -> one cue word, 48 kHz mono WAV
 
 The built web app (web/dist, from `pnpm build`) is served from the same
 process when it exists, so one server on one port runs everything.
@@ -22,10 +25,12 @@ from pathlib import Path
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .jobs import JobManager
 from .pipeline import analyze_file, backend_name, get_backend
+from . import voice
 from .speech import models_status
 
 logging.basicConfig(level=logging.INFO)
@@ -117,6 +122,24 @@ def get_job(job_id: str) -> dict:
     if job is None:
         raise HTTPException(404, "no such job")
     return job.to_dict()
+
+
+@app.get("/api/voice/{lang}")
+def api_voice_info(lang: str) -> dict:
+    if lang not in voice.WORDS:
+        raise HTTPException(404, "unknown language")
+    return voice.voice_info(lang)
+
+
+@app.get("/api/voice/{lang}/{kind}.wav")
+def api_voice_clip(lang: str, kind: str) -> FileResponse:
+    try:
+        path = voice.clip_path(lang, kind)
+    except KeyError:
+        raise HTTPException(404, "unknown cue word") from None
+    except voice.VoiceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
+    return FileResponse(path, media_type="audio/wav")
 
 
 DEFAULT_WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"

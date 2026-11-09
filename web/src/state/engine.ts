@@ -2,7 +2,10 @@ import { AudioEngine } from '../audio/engine/AudioEngine';
 import { loadWireSong } from '../audio/import/pcmStore';
 import type { Grid } from '../audio/core/types';
 import type { Project } from '../lib/types';
+import { livePads } from '../lib/arrangement';
+import { guideStems } from '../lib/guide';
 import { groupForStem } from '../lib/outputs';
+import { KINDS } from '../lib/sections';
 import { clickAudible, stemParams, type LiveMutes } from '../lib/stemParams';
 import { memoryBudgetBytes, projectBytes } from '../audio/live/budget';
 import { getState, setState, type AppState } from './store';
@@ -57,10 +60,28 @@ export function applyClick(engine: AudioEngine): void {
   engine.setClick({ enabled: clickAudible(s.click, s.mode, liveMutes(s), clickGroup) });
 }
 
+/**
+ * Spoken cues for the song in Live: the word for each pad's section kind, and
+ * whether the song has its own guide track (then only jumps are announced, and
+ * that guide is silenced while a jump's cue plays).
+ */
+export function applyCues(engine: AudioEngine, p: Project): void {
+  const s = getState();
+  const guide = guideStems(p.stems, s.outputs);
+  const ready = s.cueVoice.status === 'ready';
+  engine.setCues({
+    enabled: s.cues && ready && s.mode === 'live' && !s.liveMuteAll && !s.liveMutedGroups.includes('guide'),
+    segClip: livePads(p, s.liveArrangementId).map((pad) => KINDS.indexOf(pad.section.kind)),
+    natural: guide.length === 0,
+    guideStems: guide.map((g) => p.stems.indexOf(g)),
+  });
+}
+
 export function applyStemParams(engine: AudioEngine, p: Project): void {
   engine.setMasterGain(p.masterGain ?? 1);
   stemParams(p, getState().mode, liveMutes(), stemGroupId).forEach((params, i) => engine.setStem(i, params));
   applyClick(engine);
+  applyCues(engine, p);
 }
 
 const loading = new Map<string, Promise<void>>();

@@ -57,6 +57,8 @@ export interface AnalysisState {
   backend?: string;
   /** Where the sections came from: the guide track's spoken cues, or the audio. */
   source?: 'guide' | 'audio';
+  /** Language the guide track speaks (from its transcription); spoken cues use it too. */
+  guideLanguage?: 'en' | 'es';
   error?: string;
   progress?: number;
 }

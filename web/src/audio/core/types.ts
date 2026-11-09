@@ -61,15 +61,29 @@ export const MAX_OUTPUTS = 32;
 /** Where audio goes: a stereo pair, or one channel (a stereo stem is summed to mono). 0-based. */
 export type Dest = { l: number; r: number } | { ch: number };
 
-/** Output routing: destinations for each stem (a stem may feed several) and the click's channels. */
+/** Output routing: destinations for each stem (a stem may feed several), the click's and the spoken cues' channels. */
 export interface Routing {
   stems: Dest[][];
   click: number[];
+  /** Spoken cues (the Guide channel). Missing = the click's channels. */
+  cue?: number[];
 }
 
 /** Everything on output channels 1-2. */
 export function stereoRouting(stems: number): Routing {
-  return { stems: Array.from({ length: stems }, () => [{ l: 0, r: 1 }]), click: [0, 1] };
+  return { stems: Array.from({ length: stems }, () => [{ l: 0, r: 1 }]), click: [0, 1], cue: [0, 1] };
+}
+
+/** Spoken cues in Live ("Chorus" a bar before the chorus). */
+export interface CueParams {
+  enabled: boolean;
+  /** Clip to say before each program segment (index into the clips), -1 = nothing. */
+  segClip: number[];
+  /** Speak on the song's own flow too (no guide track), not only before jumps. */
+  natural: boolean;
+  /** Stems of the song's own guide track, silenced while a jump's cue plays. */
+  guideStems: number[];
+  gain: number;
 }
 
 export interface CorePosition {

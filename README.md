@@ -12,6 +12,7 @@ bridge and outro, as coloured blocks above the tracks. Then:
   the next bar, with a clean cut or a fade over 1 beat, 2 beats or 1 bar (the new part still lands on
   its downbeat at full volume; the same fade is used between the parts of an arrangement).
   **Repeat** keeps the current section going round (a vamp) until you tap where to go next.
+  **Spoken cues** say the next part ("Chorus") on the Guide channel a bar before it starts.
   Live is "super live": every track plays, whatever was muted or soloed in Practice (see
   [Muting in Live](#muting-in-live)). Setlists load the next song in advance. Works with keyboard
   shortcuts and Bluetooth page-turner pedals.
@@ -201,6 +202,28 @@ where to go, tap that section's pad: it comes in as usual (at the end of the sec
 with your chosen fade) and Repeat switches itself off, so the new section plays on normally. Tap
 Repeat again to stop repeating and let the song carry on into the next section.
 
+### Spoken cues in Live
+
+With **Cues** on (the speaker button on the Live screen, on by default), the app says the name of the
+next part ("Chorus", "Bridge", "Verse"...) one bar before it starts, using the computer's own voice.
+The words go to the **Guide** channel (Outputs screen), or to outputs 1–2 in stereo mode, so in a
+multitrack setup only the band's in-ears hear them.
+
+- **Songs without a guide track:** every part is announced, as a guide track would.
+- **Songs with a guide track:** the song's own guide does the talking, and the app only speaks when you
+  tap a different part from the one coming next. Its guide would announce the wrong part there, so it
+  is silenced from the cue until the new part comes in.
+- **Repeat:** before each time round, the section is announced again.
+- **Tapped late:** a part tapped less than a beat before it starts is not announced (there's no time).
+- **Spanish songs:** if a song's guide track speaks Spanish, the cues are in Spanish (Coro, Verso,
+  Puente...) when the computer has a Spanish voice. Otherwise they're in English.
+- **Mute all** and muting the **Guide** group also silence the cues.
+
+The words are made once by the analysis server (`pnpm start`) with the voice built into the computer:
+Windows' speech voices (Settings → Time & language → Speech; a Spanish voice comes with the Spanish
+language pack), macOS's voices (System Settings → Accessibility → Spoken Content), or espeak on Linux.
+If the button says **Cues: no voice**, hover over it to see why.
+
 ### Muting in Live
 
 When you open Live, nothing is muted, whatever was muted or soloed in Practice. Practice mutes come
@@ -256,6 +279,7 @@ analyzer/                  FastAPI service: POST /api/jobs, GET /api/jobs/{id}
   app/backends/            librosa (default) and allin1
   app/postprocess.py       onset-refined downbeats, snapping to bars, numbering ("Verse 2")
   app/speech.py            guide track -> words with Vosk (grammar limited to cue words), model download
+  app/voice.py             spoken cue words with the computer's voice (Windows / macOS / espeak)
   app/cues.py              words -> cues -> sections on downbeats
 scripts/make_test_song.py  synthetic multitrack song with a known structure (used by tests)
 ```
@@ -290,7 +314,7 @@ pnpm e2e
 
 runs the end-to-end tests (Playwright, Chromium). They start both servers and drive the app with a
 synthetic song: import, section detection, seek, loop, mute, arrangement export length, a Live
-quantised jump, Repeat, Live track, group and mute-all mutes, sending a guide track, working without the
+quantised jump, Repeat, spoken cues on the Guide channel, Live track, group and mute-all mutes, sending a guide track, working without the
 analyzer, and importing a folder of `.m4a` stems with their Ableton `.asd` files (that test needs ffmpeg
 to create the m4a files, and is skipped without it).
 

@@ -1,6 +1,6 @@
 import workletUrl from '../worklet/engine.worklet.ts?worker&url';
 import type { ClickParams } from '../core/RenderCore';
-import type { CoreEvent, Frame, Grid, Program, Quantize, Routing, StemParams } from '../core/types';
+import type { CoreEvent, CueParams, Frame, Grid, Program, Quantize, Routing, StemParams } from '../core/types';
 import { MAX_OUTPUTS, SAMPLE_RATE } from '../core/types';
 import { PositionClock } from './PositionClock';
 import type { FromWorklet, ToWorklet, WireSong } from './protocol';
@@ -202,6 +202,18 @@ export class AudioEngine {
   setRepeat(on: boolean): void {
     this.repeat = on;
     this.send({ type: 'repeat', on });
+  }
+  /** Spoken cue words (mono, 48 kHz), indexed by CueParams.segClip. */
+  setCueClips(clips: Float32Array[]): void {
+    this.cueClipCount = clips.length;
+    this.send({ type: 'cueClips', clips });
+  }
+  cueClipCount = 0;
+  /** Last spoken-cue settings sent to the audio thread (for tests). */
+  readonly cueParams: Partial<CueParams> = {};
+  setCues(params: Partial<CueParams>): void {
+    Object.assign(this.cueParams, params);
+    this.send({ type: 'cues', params });
   }
   setGrid(grid: Grid): void {
     this.send({ type: 'grid', grid });

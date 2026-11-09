@@ -102,6 +102,9 @@ export function buildRouting(setup: OutputSetup, stems: { name: string; output?:
   };
   const clickGroup = setup.groups.find((g) => g.click);
   routing.click = clickGroup ? groupChannels(clickGroup).map((c) => c - 1) : [0];
+  // the app's spoken cues go where the song's guide track would
+  const guideGroup = setup.groups.find((g) => g.id === 'guide');
+  routing.cue = guideGroup ? groupChannels(guideGroup).map((c) => c - 1) : routing.click;
   return routing;
 }
 

@@ -97,7 +97,12 @@ export function applyAnalysis(p: Project, res: AnalysisResult): Project {
       ...a,
       items: a.items.filter((it) => sections.some((s) => s.id === it.sectionId)),
     })),
-    analysis: { status: 'done', backend: res.backend, source: res.sectionsFrom ?? 'audio' },
+    analysis: {
+      status: 'done',
+      backend: res.backend,
+      source: res.sectionsFrom ?? 'audio',
+      guideLanguage: res.guide?.status === 'ok' ? res.guide.language : undefined,
+    },
   };
 }
 

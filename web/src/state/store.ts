@@ -4,6 +4,15 @@ import type { SnapMode } from '../lib/sections';
 import { loadFade, type FadeBeats } from '../lib/fade';
 import { loadSetup, type OutputSetup } from '../lib/outputs';
 import type { Project, Setlist } from '../lib/types';
+import type { CueLang } from '../lib/voice';
+
+function loadCues(): boolean {
+  try {
+    return localStorage.getItem('musical.cues') !== 'off';
+  } catch {
+    return true;
+  }
+}
 
 export type Mode = 'practice' | 'arrange' | 'live';
 
@@ -55,6 +64,10 @@ export interface AppState {
   liveMuteAll: boolean;
   /** Live "Repeat" (vamp): the current section loops until another one is tapped. */
   liveRepeat: boolean;
+  /** Spoken cues in Live ("Chorus" a bar before the chorus), saved in this browser. */
+  cues: boolean;
+  /** The computer voice for spoken cues, fetched from the analysis server. */
+  cueVoice: { status: 'idle' | 'loading' | 'ready' | 'unavailable'; lang?: CueLang; voice?: string; message?: string };
   /** Open the next song in the current mode instead of Practice (Live song list). */
   keepModeOnOpen: boolean;
   toast: { text: string; kind: 'info' | 'error' } | null;
@@ -86,6 +99,8 @@ export const useApp = create<AppState>(() => ({
   liveMutedGroups: [],
   liveMuteAll: false,
   liveRepeat: false,
+  cues: loadCues(),
+  cueVoice: { status: 'idle' },
   keepModeOnOpen: false,
   toast: null,
   engineError: null,

@@ -7,12 +7,12 @@ import { livePads } from '../lib/arrangement';
 import { barsIn, KIND_META } from '../lib/sections';
 import type { Project } from '../lib/types';
 import { getEngine } from '../state/engine';
-import { navigate, setLiveRepeat } from '../state/actions';
+import { navigate, setCuesEnabled, setLiveRepeat } from '../state/actions';
 import { goToSetlistIndex, goToSongLive, nextSong, saveLiveState } from '../state/live';
 import { setState, useApp } from '../state/store';
 import { FadePicker } from './FadePicker';
 import { LiveTracks } from './LiveTracks';
-import { Expand, Loop, Next, Prev, X } from './icons';
+import { Expand, Loop, Next, Prev, Speaker, X } from './icons';
 import { Button, cx, formatTime } from './ui';
 
 /** Bars (downbeats) from frame f until the queued jump lands. */
@@ -176,6 +176,9 @@ export function LivePanel({ project }: { project: Project }) {
   const transport = useApp((s) => s.transport);
   const quantize = useApp((s) => s.quantize);
   const repeat = useApp((s) => s.liveRepeat);
+  const cues = useApp((s) => s.cues);
+  const cueVoice = useApp((s) => s.cueVoice);
+  const noVoice = cues && cueVoice.status === 'unavailable';
   const arrangementId = useApp((s) => s.liveArrangementId);
   const pads = livePads(project, arrangementId);
   const pending = transport.pending;
@@ -243,6 +246,30 @@ export function LivePanel({ project }: { project: Project }) {
           )}
         >
           <Loop size={16} /> {repeat ? 'Repeating' : 'Repeat'}
+        </button>
+        <button
+          type="button"
+          data-testid="live-cues"
+          aria-pressed={cues}
+          data-voice={cueVoice.status}
+          title={
+            noVoice
+              ? `Spoken cues need a computer voice: ${cueVoice.message}`
+              : cues
+                ? `Says each part a bar before it starts, on the Guide channel${cueVoice.voice ? ` (${cueVoice.voice})` : ''}`
+                : 'Spoken cues are off'
+          }
+          onClick={() => setCuesEnabled(!cues)}
+          className={cx(
+            'flex h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-medium ring-1',
+            !cues
+              ? 'bg-white/5 text-gray-400 ring-white/10 hover:bg-white/10'
+              : noVoice
+                ? 'bg-amber-500/15 text-amber-200 ring-amber-500/40'
+                : 'bg-sky-500/20 text-sky-100 ring-sky-400/50',
+          )}
+        >
+          <Speaker size={16} /> {!cues ? 'Cues off' : noVoice ? 'Cues: no voice' : cueVoice.status === 'loading' ? 'Cues…' : 'Cues'}
         </button>
         <FadePicker hasGrid={project.beats.length > 1} />
         {arrangement && <span className="text-sm text-gray-400">Arrangement: {arrangement.name}</span>}

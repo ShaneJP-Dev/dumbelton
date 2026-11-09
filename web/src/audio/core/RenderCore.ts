@@ -7,6 +7,7 @@ import {
   stereoRouting,
   type CoreEvent,
   type CorePosition,
+  type CueParams,
   type Frame,
   type Grid,
   type Program,
@@ -110,6 +111,19 @@ export class RenderCore {
   private transition = XFADE_FRAMES;
   /** Live "Repeat" (vamp): the current segment loops until a queued jump lands. */
   private repeat = false;
+
+  // spoken cues: a clip ("Chorus") on the cue channels one bar before a part starts
+  private cues: CueParams = { enabled: false, segClip: [], natural: true, guideStems: [], gain: 0.8 };
+  private cueClips: Float32Array[] = [];
+  private cueBuf: Float32Array | null = null;
+  private cueIdx = 0;
+  /** The boundary last cued (or skipped), so each is spoken once. */
+  private cueKey = '';
+  /** Counts boundaries passed and seeks, so a repeat or a re-play is a new cue. */
+  private cueRound = 0;
+  /** The song's own guide stems are silenced (a jump's cue is playing). */
+  private duck = false;
+  private guideSet = new Uint8Array(0);
   private stretching = false;
   /** Source frame of the last output frame (differs from pos while the stretcher buffers). */
   private lastOut = 0;
@@ -164,6 +178,10 @@ export class RenderCore {
     this.gl = new Float64Array(n);
     this.gr = new Float64Array(n);
     this.routing = stereoRouting(n);
+    this.guideSet = new Uint8Array(n);
+    this.cueBuf = null;
+    this.duck = false;
+    this.cueRound++;
     this.cap = 0;
     this.ensureCapacity(1024);
     this.setGrid(grid);
@@ -232,6 +250,26 @@ export class RenderCore {
     return this.repeat;
   }
 
+  /** The spoken words, indexed by CueParams.segClip. Mono, at the engine's sample rate. */
+  setCueClips(clips: Float32Array[]): void {
+    this.cueClips = clips;
+    this.cueBuf = null;
+  }
+
+  setCues(p: Partial<CueParams>): void {
+    this.cues = { ...this.cues, ...p };
+    this.guideSet = new Uint8Array(this.params.length);
+    for (const i of this.cues.guideStems) if (i >= 0 && i < this.guideSet.length) this.guideSet[i] = 1;
+    if (!this.cues.enabled) {
+      this.cueBuf = null;
+      this.duck = false;
+    }
+  }
+
+  getCues(): CueParams {
+    return this.cues;
+  }
+
   setStem(index: number, p: Partial<StemParams>): void {
     if (index < 0 || index >= this.params.length) return;
     this.params[index] = { ...this.params[index], ...p };
@@ -264,7 +302,7 @@ export class RenderCore {
 
   /** Where each stem and the click go. Channels outside the rendered outputs are ignored. */
   setRouting(r: Routing): void {
-    this.routing = { stems: r.stems.map((d) => d.slice()), click: r.click.slice() };
+    this.routing = { stems: r.stems.map((d) => d.slice()), click: r.click.slice(), cue: (r.cue ?? r.click).slice() };
   }
 
   getRouting(): Routing {
@@ -285,6 +323,7 @@ export class RenderCore {
   setProgram(p: Program): void {
     this.program = { segments: p.segments.map((s) => ({ ...s })), loop: p.loop };
     this.pending = null;
+    this.cueRound++;
     const segs = this.program.segments;
     if (segs.length === 0 || !this.song) {
       this.state = 'stopped';
@@ -331,6 +370,8 @@ export class RenderCore {
   }
 
   pause(): void {
+    this.cueBuf = null;
+    this.duck = false;
     if (this.state === 'playing') this.state = 'stopping';
     if (this.state === 'countIn') {
       this.state = 'stopped';
@@ -352,6 +393,7 @@ export class RenderCore {
     const s = segs[Math.max(0, Math.min(segs.length - 1, idx))];
     const f = Math.max(s.start, Math.min(s.end - 1, Math.round(frame)));
     this.pending = null;
+    this.cueRound++;
     if (this.state === 'playing') {
       this.xf = { outPos: this.pos, i: 0, len: XFADE_FRAMES, toSilence: false };
     }
@@ -436,6 +478,7 @@ export class RenderCore {
       return;
     }
 
+    if (this.state === 'playing') this.updateCue();
     const st = this.stretcher;
     this.stretching = st !== null && (this.speed !== 1 || st.buffered() > 0);
     if (this.stretching) {
@@ -525,6 +568,7 @@ export class RenderCore {
   private handleTrigger(): void {
     const segs = this.program.segments;
     const cur = segs[this.seg];
+    if (this.triggerKind !== 'end' && this.triggerKind !== 'none') this.cueRound++;
     switch (this.triggerKind) {
       case 'pending': {
         const p = this.pending!;
@@ -664,7 +708,7 @@ export class RenderCore {
         stemOuts[s][1].set(br.subarray(0, n));
       }
       const p = this.params[s];
-      const audible = !p.mute && (!anySolo || p.solo);
+      const audible = !p.mute && (!anySolo || p.solo) && !(this.duck && this.guideSet[s] === 1);
       const tl = audible ? p.gain * mg * (p.pan > 0 ? 1 - p.pan : 1) : 0;
       const tr = audible ? p.gain * mg * (p.pan < 0 ? 1 + p.pan : 1) : 0;
       let gL = this.gl[s];
@@ -708,6 +752,7 @@ export class RenderCore {
       }
     }
     this.renderClick(outs, n);
+    this.renderCue(outs, n);
     this.applyMaster(outs, n);
     this.measure(outs, n);
   }
@@ -764,6 +809,72 @@ export class RenderCore {
         this.computeTrigger();
       }
     }
+  }
+
+  /** Bar length (frames) just before frame f, from the downbeat grid (2 s without one). */
+  private barAt(f: Frame): number {
+    const db = this.downbeats;
+    if (db.length >= 2) {
+      const i = Math.max(1, Math.min(db.length - 1, lowerBound(db, f)));
+      return db[i] - db[i - 1];
+    }
+    return 2 * this.sampleRate;
+  }
+
+  /**
+   * The next part to start: where (source frame in the current segment), which
+   * segment, and whether that is a jump away from the song's own order.
+   */
+  private upcoming(): { at: Frame; target: number; jump: boolean } | null {
+    const segs = this.program.segments;
+    if (segs.length === 0) return null;
+    const natural = this.seg + 1 < segs.length ? this.seg + 1 : this.program.loop ? 0 : -1;
+    if (this.pending) return { at: this.pending.at, target: this.pending.to, jump: this.pending.to !== natural };
+    const nx = this.nextIndex(this.seg); // a repeating section comes round again
+    if (nx < 0) return null;
+    return { at: segs[this.seg].end, target: nx, jump: nx !== natural };
+  }
+
+  /**
+   * Spoken cues, decided at the start of each block: within the last bar
+   * before a part starts, say its name once. A jump away from the song's own
+   * order also silences the song's guide track until it lands, because that
+   * guide would announce the part the song was going to play.
+   */
+  private updateCue(): void {
+    this.duck = false;
+    const c = this.cues;
+    if (!c.enabled || this.cueClips.length === 0) return;
+    const u = this.upcoming();
+    if (!u) return;
+    const bar = this.barAt(u.at);
+    // what is being heard: the stretcher reads ahead of its output
+    const here = this.pos - (this.stretching && this.stretcher ? this.stretcher.buffered() : 0);
+    if (here < u.at - bar || here >= u.at) return;
+    if (u.jump) this.duck = true;
+    const clip = c.segClip[u.target] ?? -1;
+    if (clip < 0 || clip >= this.cueClips.length || !(c.natural || u.jump)) return;
+    const key = `${this.cueRound}:${u.at}:${u.target}`;
+    if (key === this.cueKey) return;
+    this.cueKey = key;
+    if (u.at - here < bar / 4) return; // tapped too late to say it before the part starts
+    this.cueBuf = this.cueClips[clip];
+    this.cueIdx = 0;
+  }
+
+  private renderCue(outs: Float32Array[], n: number): void {
+    const buf = this.cueBuf;
+    if (!buf) return;
+    const chans = this.routing.cue ?? this.routing.click;
+    const g = this.cues.gain;
+    const k = Math.min(n, buf.length - this.cueIdx);
+    for (const c of chans) {
+      if (c < 0 || c >= outs.length) continue;
+      const o = outs[c];
+      for (let i = 0; i < k; i++) o[i] += buf[this.cueIdx + i] * g;
+    }
+    this.cueIdx += k;
+    if (this.cueIdx >= buf.length) this.cueBuf = null;
   }
 
   private resyncClick(): void {

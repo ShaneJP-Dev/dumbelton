@@ -13,3 +13,4 @@ testdata/
 *.log
 .DS_Store
 analyzer/models/
+analyzer/voice-cache/

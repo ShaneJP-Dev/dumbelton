@@ -43,12 +43,14 @@ describe('buildRouting', () => {
     const r = buildRouting(defaultSetup(), stems);
     expect(r.stems.every((d) => d.length === 1 && 'l' in d[0] && d[0].l === 0 && d[0].r === 1)).toBe(true);
     expect(r.click).toEqual([0, 1]);
+    expect(r.cue).toEqual([0, 1]);
   });
 
   it('multitrack mode uses the church layout (0-based in the engine)', () => {
     const r = buildRouting(multi(), stems);
     expect(r.stems).toEqual([[{ ch: 0 }], [{ ch: 1 }], [{ l: 2, r: 3 }], [{ ch: 4 }], [{ l: 5, r: 6 }]]);
     expect(r.click).toEqual([0]);
+    expect(r.cue).toEqual([1]); // spoken cues on the Guide channel
   });
 
   it('the optional stereo mix gets every track except click and guide', () => {

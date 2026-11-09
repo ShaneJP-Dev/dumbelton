@@ -8,7 +8,8 @@ import { buildRouting, saveSetup, type OutputSetup } from '../lib/outputs';
 import { barLength } from '../audio/core/grid';
 import { SAMPLE_RATE } from '../audio/core/types';
 import type { Program } from '../audio/core/types';
-import { activateProject, applyClick, applyStemParams, getEngine, peekEngine, projectGrid } from './engine';
+import { loadVoice, type CueLang } from '../lib/voice';
+import { activateProject, applyClick, applyCues, applyStemParams, getEngine, peekEngine, projectGrid } from './engine';
 import { getState, setState, type Mode, type Route } from './store';
 
 // ------------------------------------------------------------------ routing
@@ -196,6 +197,7 @@ export async function openProject(id: string, opts: { keepMode?: boolean } = {})
     syncTransition();
     syncRouting();
     syncProgram();
+    void ensureCueVoice();
   } catch (err) {
     setState({ engineError: String((err as Error).message ?? err) });
   }
@@ -221,6 +223,7 @@ export function syncProgram(): void {
   const cur = getState().current;
   if (!engine || !p || !cur || engine.activeSongId !== cur.id) return;
   engine.setProgram(p);
+  applyCues(engine, cur); // pads (and their words) follow the program
 }
 
 export function setMode(mode: Mode): void {
@@ -230,6 +233,56 @@ export function setMode(mode: Mode): void {
   peekEngine()?.setRepeat(false);
   syncStems();
   syncProgram();
+  if (mode === 'live') void ensureCueVoice();
+}
+
+let cueToastShown = false;
+
+/**
+ * Load the spoken cue words for the current song's language (Spanish if its
+ * guide speaks Spanish, else English) when Live needs them.
+ */
+export async function ensureCueVoice(): Promise<void> {
+  const { current, mode, cues, cueVoice } = getState();
+  if (!current || mode !== 'live' || !cues) return;
+  const want: CueLang = current.analysis.guideLanguage === 'es' ? 'es' : 'en';
+  if ((cueVoice.status === 'ready' || cueVoice.status === 'loading') && cueVoice.lang === want) return;
+  setState({ cueVoice: { status: 'loading', lang: want } });
+  try {
+    let bank;
+    try {
+      bank = await loadVoice(want);
+    } catch (err) {
+      if (want === 'en') throw err;
+      bank = await loadVoice('en'); // no Spanish voice on this computer: English words
+    }
+    const engine = await getEngine();
+    engine.setCueClips(bank.clips);
+    setState({ cueVoice: { status: 'ready', lang: bank.lang, voice: bank.voice } });
+    // a song in the other language may have opened meanwhile
+    if (getState().current?.analysis.guideLanguage !== current.analysis.guideLanguage) void ensureCueVoice();
+  } catch (err) {
+    const message = String((err as Error).message ?? err);
+    setState({ cueVoice: { status: 'unavailable', lang: want, message } });
+    if (!cueToastShown) {
+      cueToastShown = true;
+      toast(`Spoken cues are off: ${message}.`, 'info');
+    }
+  }
+  syncStems();
+}
+
+/** Turn spoken cues on or off (saved in this browser). */
+export function setCuesEnabled(on: boolean): void {
+  setState({ cues: on });
+  try {
+    localStorage.setItem('musical.cues', on ? 'on' : 'off');
+  } catch {
+    /* storage unavailable */
+  }
+  if (on && getState().cueVoice.status === 'unavailable') setState({ cueVoice: { status: 'idle' } }); // try again
+  syncStems();
+  void ensureCueVoice();
 }
 
 /** Live "Repeat" (vamp): loop the current section until another one is tapped. */

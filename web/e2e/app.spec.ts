@@ -41,6 +41,26 @@ async function importSong(page: Page, name: string) {
   await page.waitForURL(/#\/song\//);
 }
 
+/** A mono 16-bit 48 kHz WAV of a sine tone. */
+function toneWav(freq: number, seconds: number): Buffer {
+  const n = Math.round(seconds * SR);
+  const buf = Buffer.alloc(44 + n * 2);
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + n * 2, 4);
+  buf.write('WAVEfmt ', 8);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(SR, 24);
+  buf.writeUInt32LE(SR * 2, 28);
+  buf.writeUInt16LE(2, 32);
+  buf.writeUInt16LE(16, 34);
+  buf.write('data', 36);
+  buf.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) buf.writeInt16LE(Math.round(0.7 * 32767 * Math.sin((2 * Math.PI * freq * i) / SR)), 44 + i * 2);
+  return buf;
+}
+
 /** Output level (RMS, dBFS) measured on the engine's output in the page. */
 const outputLevel = (page: Page, ms = 700) =>
   page.evaluate(async (ms) => {
@@ -446,6 +466,81 @@ test.describe.serial('song workflow', () => {
     await page.keyboard.press('r');
     await expect(repeat).toHaveAttribute('aria-pressed', 'false');
     await page.getByRole('button', { name: 'Practice', exact: true }).click();
+  });
+
+  test('spoken cues say the next part on the Guide channel a bar before it starts', async () => {
+    // a stand-in for the computer's voice: every word is a short 600 Hz tone
+    const kinds = ['intro', 'verse', 'pre-chorus', 'chorus', 'bridge', 'interlude', 'tag', 'vamp', 'solo', 'inst', 'break', 'outro'];
+    await page.route('**/api/voice/en', (route) => route.fulfill({ json: { available: true, voice: 'Test Voice', kinds } }));
+    await page.route('**/api/voice/en/*.wav', (route) =>
+      route.fulfill({ body: toneWav(600, 0.3), headers: { 'content-type': 'audio/wav' } }),
+    );
+    type E = {
+      __engine: {
+        ctx: AudioContext;
+        node: AudioNode;
+        seek: (f: number, s?: number) => void;
+        play: () => void;
+        pause: () => void;
+        cueParams: { enabled?: boolean; natural?: boolean };
+        cueClipCount: number;
+      };
+    };
+    await page.goto('/#/outputs');
+    await page.getByTestId('mode-multitrack').click();
+    await page.goto('/');
+    await page.getByTestId('song-card').filter({ hasText: 'E2E Song' }).click();
+    await page.waitForURL(/#\/song\//);
+    await page.getByRole('button', { name: 'Live', exact: true }).click();
+    const cues = page.getByTestId('live-cues');
+    await expect(cues).toHaveAttribute('data-voice', 'ready');
+    await expect(cues).toHaveAttribute('aria-pressed', 'true');
+    expect(await page.evaluate(() => (window as unknown as E).__engine.cueClipCount)).toBe(12);
+    await expect.poll(() => page.evaluate(() => (window as unknown as E).__engine.cueParams)).toMatchObject({ enabled: true, natural: true });
+
+    const intro = (await project(page, 'E2E Song')).sections[0];
+    // play from 1.5 bars (3 s) before the end of the intro, watching the Guide channel (2)
+    const trace = await page.evaluate(async (from) => {
+      const e = (window as unknown as E).__engine;
+      const split = e.ctx.createChannelSplitter(32);
+      e.node.connect(split);
+      const a = e.ctx.createAnalyser();
+      a.fftSize = 512;
+      split.connect(a, 1);
+      e.seek(from, 0);
+      e.play();
+      const t0 = performance.now();
+      const buf = new Float32Array(512);
+      const out: [number, number][] = [];
+      while (performance.now() - t0 < 2400) {
+        a.getFloatTimeDomainData(buf);
+        let pk = 0;
+        for (const v of buf) pk = Math.max(pk, Math.abs(v));
+        out.push([performance.now() - t0, pk]);
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      e.pause();
+      split.disconnect();
+      return out;
+    }, intro.end - 3 * SR);
+    const loud = trace.filter(([, pk]) => pk > 0.05).map(([t]) => t);
+    expect(loud.length).toBeGreaterThan(3);
+    // the word starts one bar (2 s) before the verse, i.e. about 1 s after playing from 3 s before it
+    expect(loud[0]).toBeGreaterThan(700);
+    expect(loud[0]).toBeLessThan(1500);
+    expect(trace.filter(([t]) => t < 600).every(([, pk]) => pk < 0.01)).toBe(true);
+
+    // turning cues off is remembered and tells the engine
+    await cues.click();
+    await expect(cues).toHaveAttribute('aria-pressed', 'false');
+    await expect.poll(() => page.evaluate(() => (window as unknown as E).__engine.cueParams.enabled)).toBe(false);
+    await cues.click();
+    await expect(cues).toHaveAttribute('aria-pressed', 'true');
+
+    await page.unroute('**/api/voice/en');
+    await page.unroute('**/api/voice/en/*.wav');
+    await page.goto('/#/outputs');
+    await page.getByTestId('mode-stereo').click();
   });
 });
 
