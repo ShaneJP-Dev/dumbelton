@@ -195,6 +195,28 @@ analyzer missed, press **A** while the song plays, double-click the section bar,
 The new section starts at that point, on the nearest bar. If the analyzer is not running, songs still import
 and play, and you can mark sections by hand.
 
+### Seeing the church desk's channels at home (the Desk panel)
+
+You don't need Dante or the church desk to see how a song splits into channels. The app always works
+out all 32 channels; an ordinary computer just can only play two of them.
+
+1. On the Outputs page choose **Multitrack** (the church layout).
+2. Open a song and tap **Desk** in the bottom bar. Each output channel gets a strip: its number, what
+   it is (Click, Guide, Drums L, Bass...), the tracks on it, and a live level meter, exactly as the
+   desk would receive them.
+3. On a computer with two channels (your laptop) you hear the **full mix** while the strips show
+   every channel. Tap the headphones on a strip to hear just that channel; tap **Hear the full mix**
+   to go back. On Dante (more than two channels) listening is switched off, so the desk's channels
+   1–2 are never replaced.
+
+Why not a virtual sound card? On Windows, apps like Chrome can only send two channels to virtual
+devices such as Voicemeeter, so the extra channels would never arrive.
+
+**Practising on the desk itself:** Soundcraft makes a free **Virtual Vi** offline editor for the Vi
+series (the church's Vi3000) that runs on Windows and looks and works like the console, so you can learn
+its layout and prepare shows at home. It's a desk simulator and remote control: it doesn't play the
+app's audio. Download it from Soundcraft's (HARMAN's) Vi series software page and pick the version that
+matches the desk's software.
 ### Changing the key
 
 The bottom bar shows the song's key as a letter: **Key G**. The − and + buttons move it a semitone at a
@@ -351,7 +373,8 @@ pnpm e2e
 
 runs the end-to-end tests (Playwright, Chromium). They start both servers and drive the app with a
 synthetic song: import, section detection, seek, loop, mute, arrangement export length, a Live
-quantised jump, Repeat, spoken cues on the Guide channel, key change and export length, MIDI pedals (with a stand-in MIDI device), Live track, group and mute-all mutes, sending a guide track, working without the
+quantised jump, Repeat, spoken cues on the Guide channel, key change and export length, MIDI pedals (with a stand-in MIDI device), the Desk panel's meters and
+listening, Live track, group and mute-all mutes, sending a guide track, working without the
 analyzer, and importing a folder of `.m4a` stems with their Ableton `.asd` files (that test needs ffmpeg
 to create the m4a files, and is skipped without it).
 

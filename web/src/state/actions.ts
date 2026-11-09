@@ -5,7 +5,7 @@ import type { SongKey } from '../lib/musicKey';
 import type { Project, Section, Setlist } from '../lib/types';
 import { addSectionAt, snapFrame } from '../lib/sections';
 import { fadeFrames, saveFade, type FadeBeats } from '../lib/fade';
-import { buildRouting, saveSetup, type OutputSetup } from '../lib/outputs';
+import { buildRouting, monitorFor, saveSetup, type OutputSetup } from '../lib/outputs';
 import { barLength } from '../audio/core/grid';
 import { SAMPLE_RATE } from '../audio/core/types';
 import type { Program } from '../audio/core/types';
@@ -344,6 +344,23 @@ export function syncRouting(): void {
   const engine = peekEngine();
   const { current, outputs } = getState();
   if (engine && current && engine.activeSongId === current.id) engine.setRouting(buildRouting(outputs, current.stems));
+  syncMonitor();
+}
+
+/** What a 2-channel device (a laptop) plays with a multichannel layout: the full mix, or one channel. */
+export function syncMonitor(): void {
+  const engine = peekEngine();
+  if (!engine) return;
+  const { outputs, outputChannels, deskListen } = getState();
+  const m = monitorFor(outputs, outputChannels ?? engine.outputChannels, deskListen);
+  const cur = engine.monitor;
+  if (JSON.stringify(cur) !== JSON.stringify(m)) engine.setMonitor(m);
+}
+
+/** Listen to one output channel (1-based) on the laptop, or null for the full mix. */
+export function setDeskListen(ch: number | null): void {
+  setState({ deskListen: ch });
+  syncMonitor();
 }
 
 /** Change (and save) the output setup; switches the device if it changed. */
@@ -358,6 +375,7 @@ export async function setOutputs(next: OutputSetup): Promise<void> {
     if (engine) {
       try {
         setState({ outputChannels: await engine.setOutputDevice(next.deviceId) });
+        syncMonitor(); // e.g. Dante now: outputs 1-2 are the desk's own channels again
       } catch (err) {
         toast(`Could not use that output: ${(err as Error).message}`, 'error');
       }

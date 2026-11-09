@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrangePanel } from '../components/ArrangePanel';
+import { DeskPanel } from '../components/DeskPanel';
 import { Back, More, Plus, Trash } from '../components/icons';
 import { ImportDialog } from '../components/ImportDialog';
 import { LivePanel } from '../components/LivePanel';
@@ -75,6 +76,7 @@ export function SongView({ id }: { id: string }) {
   const project = useApp((s) => s.current);
   const mode = useApp((s) => s.mode);
   const engineError = useApp((s) => s.engineError);
+  const deskOpen = useApp((s) => s.deskOpen);
   const arrangementId = useApp((s) => s.arrangementId);
   const arrangement = mode === 'arrange' ? project?.arrangements.find((a) => a.id === arrangementId) : undefined;
   const [addOpen, setAddOpen] = useState(false);
@@ -205,6 +207,7 @@ export function SongView({ id }: { id: string }) {
           </>
         )}
       </main>
+      {deskOpen && <DeskPanel project={project} />}
       <Transport project={project} layout={layout} />
       <ImportDialog open={addOpen} onClose={() => setAddOpen(false)} addTo={project} />
     </div>

@@ -1,6 +1,6 @@
 import type { CompactStem } from '../core/StemBlocks';
 import type { ClickParams } from '../core/RenderCore';
-import type { CoreEvent, CueParams, Frame, Grid, Program, Quantize, Routing, StemParams } from '../core/types';
+import type { CoreEvent, CueParams, Frame, Grid, Monitor, Program, Quantize, Routing, StemParams } from '../core/types';
 
 export interface WireSong {
   id: string;
@@ -27,6 +27,7 @@ export type ToWorklet =
   | { type: 'cueClips'; clips: Float32Array[] }
   | { type: 'cues'; params: Partial<CueParams> }
   | { type: 'routing'; routing: Routing }
+  | { type: 'monitor'; monitor: Monitor | null }
   | { type: 'testTone'; channel: number }
   | { type: 'master'; gain: number }
   | { type: 'grid'; grid: Grid };
@@ -43,6 +44,8 @@ export interface PosReport {
   /** Song level since the previous report: peak L/R (linear) of all tracks, and clipping on any output. */
   meter: [number, number];
   clip: boolean;
+  /** Peak (linear) of each output channel since the previous report: the Desk panel's meters. */
+  chPeaks: Float32Array;
 }
 
 export type FromWorklet =

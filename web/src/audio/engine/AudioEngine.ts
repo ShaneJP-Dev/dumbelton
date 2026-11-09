@@ -1,6 +1,6 @@
 import workletUrl from '../worklet/engine.worklet.ts?worker&url';
 import type { ClickParams } from '../core/RenderCore';
-import type { CoreEvent, CueParams, Frame, Grid, Program, Quantize, Routing, StemParams } from '../core/types';
+import type { CoreEvent, CueParams, Frame, Grid, Monitor, Program, Quantize, Routing, StemParams } from '../core/types';
 import { MAX_OUTPUTS, SAMPLE_RATE } from '../core/types';
 import { PositionClock } from './PositionClock';
 import type { FromWorklet, ToWorklet, WireSong } from './protocol';
@@ -79,6 +79,7 @@ export class AudioEngine {
         if (m.meter[0] > this.meterPeak[0]) this.meterPeak[0] = m.meter[0];
         if (m.meter[1] > this.meterPeak[1]) this.meterPeak[1] = m.meter[1];
         if (m.clip) this.meterClip = true;
+        if (m.chPeaks) for (let c = 0; c < m.chPeaks.length && c < MAX_OUTPUTS; c++) if (m.chPeaks[c] > this.chPeaks[c]) this.chPeaks[c] = m.chPeaks[c];
         this.posListeners.forEach((l) => l());
         break;
       case 'event':
@@ -191,6 +192,22 @@ export class AudioEngine {
 
   setRouting(routing: Routing): void {
     this.send({ type: 'routing', routing });
+  }
+
+  private chPeaks = new Float32Array(MAX_OUTPUTS);
+  /** Peak (linear) of every output channel since the last call (the Desk panel's meters). */
+  readChannelPeaks(): Float32Array {
+    const p = this.chPeaks.slice();
+    this.chPeaks.fill(0);
+    return p;
+  }
+
+  /** Last laptop monitor sent to the audio thread (for tests). */
+  monitor: Monitor | null = null;
+  /** What a 2-channel device plays when the layout is for a multichannel desk. */
+  setMonitor(monitor: Monitor | null): void {
+    this.monitor = monitor;
+    this.send({ type: 'monitor', monitor });
   }
 
   /** Short beep on one output channel (0-based), to find it on the desk. */

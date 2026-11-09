@@ -41,17 +41,20 @@ export function Toggle({
   children,
   title,
   className,
+  testId,
 }: {
   on: boolean;
   onClick: () => void;
   children: ReactNode;
   title?: string;
   className?: string;
+  testId?: string;
 }) {
   return (
     <button
       type="button"
       title={title}
+      data-testid={testId}
       aria-pressed={on}
       onClick={onClick}
       className={cx(

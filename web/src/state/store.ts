@@ -78,6 +78,10 @@ export interface AppState {
   midiLearn: string | null;
   /** The last MIDI message, for the Controls page monitor. */
   midiLast: string | null;
+  /** The Desk panel (every output channel with a meter) is open on the song screen. */
+  deskOpen: boolean;
+  /** Channel (1-based) heard on a 2-channel device instead of the full mix; null = the mix. */
+  deskListen: number | null;
   /** Open the next song in the current mode instead of Practice (Live song list). */
   keepModeOnOpen: boolean;
   toast: { text: string; kind: 'info' | 'error' } | null;
@@ -115,6 +119,8 @@ export const useApp = create<AppState>(() => ({
   midiMap: loadMidiMap(),
   midiLearn: null,
   midiLast: null,
+  deskOpen: false,
+  deskListen: null,
   keepModeOnOpen: false,
   toast: null,
   engineError: null,

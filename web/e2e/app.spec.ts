@@ -273,28 +273,15 @@ test.describe.serial('song workflow', () => {
   });
 
   test('multitrack outputs: each group lands on its own channels', async () => {
-    // per-channel peak levels of the engine's 32 outputs
+    // per-channel peak levels of the engine's 32 outputs, as the desk receives them (the Desk panel's meters)
     const levels = () =>
       page.evaluate(async () => {
-        const w = window as unknown as { __engine: { ctx: AudioContext; node: AudioNode }; __an32?: AnalyserNode[] };
-        if (!w.__an32) {
-          const split = w.__engine.ctx.createChannelSplitter(32);
-          w.__engine.node.connect(split);
-          w.__an32 = Array.from({ length: 32 }, (_, k) => {
-            const a = w.__engine.ctx.createAnalyser();
-            a.fftSize = 2048;
-            split.connect(a, k);
-            return a;
-          });
-        }
+        const e = (window as unknown as { __engine: { readChannelPeaks(): Float32Array } }).__engine;
+        e.readChannelPeaks();
         const peak = new Array(32).fill(0);
-        const buf = new Float32Array(2048);
         for (let t = 0; t < 12; t++) {
-          w.__an32.forEach((a, k) => {
-            a.getFloatTimeDomainData(buf);
-            for (const v of buf) peak[k] = Math.max(peak[k], Math.abs(v));
-          });
           await new Promise((r) => setTimeout(r, 50));
+          e.readChannelPeaks().forEach((v, k) => (peak[k] = Math.max(peak[k], v)));
         }
         return peak as number[];
       });
@@ -484,6 +471,7 @@ test.describe.serial('song workflow', () => {
         pause: () => void;
         cueParams: { enabled?: boolean; natural?: boolean };
         cueClipCount: number;
+        readChannelPeaks(): Float32Array;
       };
     };
     await page.goto('/#/outputs');
@@ -502,25 +490,16 @@ test.describe.serial('song workflow', () => {
     // play from 1.5 bars (3 s) before the end of the intro, watching the Guide channel (2)
     const trace = await page.evaluate(async (from) => {
       const e = (window as unknown as E).__engine;
-      const split = e.ctx.createChannelSplitter(32);
-      e.node.connect(split);
-      const a = e.ctx.createAnalyser();
-      a.fftSize = 512;
-      split.connect(a, 1);
       e.seek(from, 0);
       e.play();
+      e.readChannelPeaks();
       const t0 = performance.now();
-      const buf = new Float32Array(512);
       const out: [number, number][] = [];
       while (performance.now() - t0 < 2400) {
-        a.getFloatTimeDomainData(buf);
-        let pk = 0;
-        for (const v of buf) pk = Math.max(pk, Math.abs(v));
-        out.push([performance.now() - t0, pk]);
         await new Promise((r) => setTimeout(r, 20));
+        out.push([performance.now() - t0, e.readChannelPeaks()[1]]); // the Guide channel, as the desk gets it
       }
       e.pause();
-      split.disconnect();
       return out;
     }, intro.end - 3 * SR);
     const loud = trace.filter(([, pk]) => pk > 0.05).map(([t]) => t);
@@ -602,6 +581,108 @@ test.describe.serial('song workflow', () => {
     await expect(value).toHaveText('G');
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Practice', exact: true }).click();
+  });
+
+  test('the Desk panel shows every output channel with a meter, and the laptop can listen to one', async () => {
+    type E = {
+      __engine: {
+        ctx: AudioContext;
+        node: AudioNode;
+        outputChannels: number;
+        monitor: { kind: string; ch?: number } | null;
+        play: () => void;
+        pause: () => void;
+        seek: (f: number) => void;
+        readChannelPeaks(): Float32Array;
+      };
+    };
+    await page.goto('/#/outputs');
+    await page.getByTestId('mode-multitrack').click();
+    await page.getByLabel('Bass first channel').fill('5'); // an earlier test moved it to 14
+    await page.goto('/');
+    await page.getByTestId('song-card').filter({ hasText: 'E2E Song' }).click();
+    await page.waitForURL(/#\/song\//);
+    await page.getByRole('button', { name: 'Practice', exact: true }).click();
+    await page.getByTestId('desk-toggle').click();
+    await expect(page.getByTestId('desk-panel')).toBeVisible();
+    const strips = page.getByTestId('desk-strip');
+    expect(await strips.evaluateAll((els) => els.map((e) => e.getAttribute('data-label')))).toEqual([
+      'Click',
+      'Guide',
+      'Drums L',
+      'Drums R',
+      'Bass',
+      'Keys L',
+      'Keys R',
+      'Guitars L',
+      'Guitars R',
+      'Vocals L',
+      'Vocals R',
+      'Other L',
+      'Other R',
+    ]);
+    await expect(page.locator('[data-testid=desk-strip][data-ch="12"]')).toContainText('lead');
+    // this test browser has a 2-channel output, like a laptop: it plays the full mix
+    expect(await page.evaluate(() => (window as unknown as E).__engine.outputChannels)).toBeLessThanOrEqual(2);
+    await expect.poll(() => page.evaluate(() => (window as unknown as E).__engine.monitor)).toEqual({ kind: 'mix' });
+    await expect(page.getByTestId('desk-mix')).toHaveAttribute('aria-pressed', 'true');
+
+    await page.evaluate(() => {
+      const e = (window as unknown as E).__engine;
+      e.seek(48000 * 10);
+      e.play();
+    });
+    const strip = (ch: number) => page.locator(`[data-testid=desk-strip][data-ch="${ch}"]`);
+    const level = async (ch: number) => {
+      const v = await strip(ch).getAttribute('data-level');
+      return v === '-inf' ? -Infinity : Number(v);
+    };
+    await expect.poll(() => level(3), { timeout: 5000 }).toBeGreaterThan(-40); // drums
+    await expect.poll(() => level(5)).toBeGreaterThan(-40); // bass
+    expect(await level(2)).toBe(-Infinity); // nothing on the Guide channel in this song
+    expect(await level(8)).toBe(-Infinity); // no guitars
+
+    // listen to the bass channel on the laptop: outputs 1-2 then carry just the bass
+    await strip(5).getByTestId('desk-listen').click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as E).__engine.monitor)).toEqual({ kind: 'channel', ch: 4 });
+    // over the same half second: the loudest the laptop's output 1 got, and the loudest the Bass and Drums strips showed
+    const m = await page.evaluate(async () => {
+      const e = (window as unknown as E).__engine;
+      const split = e.ctx.createChannelSplitter(32);
+      e.node.connect(split);
+      const a = e.ctx.createAnalyser();
+      a.fftSize = 2048;
+      split.connect(a, 0);
+      const stripDb = (ch: number) => {
+        const v = document.querySelector(`[data-testid=desk-strip][data-ch="${ch}"]`)?.getAttribute('data-level');
+        return v && v !== '-inf' ? Number(v) : -Infinity;
+      };
+      let out = 0;
+      let bass = -Infinity;
+      let drums = -Infinity;
+      const buf = new Float32Array(2048);
+      for (let t = 0; t < 25; t++) {
+        await new Promise((r) => setTimeout(r, 20));
+        a.getFloatTimeDomainData(buf);
+        for (const v of buf) out = Math.max(out, Math.abs(v));
+        bass = Math.max(bass, stripDb(5));
+        drums = Math.max(drums, stripDb(3));
+      }
+      split.disconnect();
+      return { out: 20 * Math.log10(out), bass, drums };
+    });
+    // output 1 now plays the bass channel, at the level its strip shows
+    expect(m.bass).toBeGreaterThan(-40);
+    expect(Math.abs(m.out - m.bass)).toBeLessThan(3);
+    // tap again: back to the full mix
+    await strip(5).getByTestId('desk-listen').click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as E).__engine.monitor)).toEqual({ kind: 'mix' });
+
+    await page.evaluate(() => (window as unknown as E).__engine.pause());
+    await page.getByTestId('desk-toggle').click();
+    await expect(page.getByTestId('desk-panel')).toHaveCount(0);
+    await page.goto('/#/outputs');
+    await page.getByTestId('mode-stereo').click();
   });
 });
 

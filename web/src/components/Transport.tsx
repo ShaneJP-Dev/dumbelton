@@ -7,7 +7,7 @@ import { peekEngine } from '../state/engine';
 import { setClick, setSpeed, syncProgram, togglePlay } from '../state/actions';
 import { KeyControl } from './KeyControl';
 import { setState, useApp } from '../state/store';
-import { Loop, Metronome, Pause, Play } from './icons';
+import { Loop, Metronome, Pause, Play, Sliders } from './icons';
 import { MasterSection } from './MasterSection';
 import { cx, formatTime, Toggle } from './ui';
 
@@ -49,6 +49,7 @@ export function Transport({ project, layout }: { project: Project; layout?: Layo
   const mode = useApp((s) => s.mode);
   const speed = useApp((s) => s.speed);
   const click = useApp((s) => s.click);
+  const deskOpen = useApp((s) => s.deskOpen);
   const countIn = useApp((s) => s.countIn);
   const loop = useApp((s) => s.loop);
   const selected = useApp((s) => s.selected);
@@ -87,6 +88,9 @@ export function Transport({ project, layout }: { project: Project; layout?: Layo
             <Loop size={16} /> <span className="hidden sm:inline">Loop</span>
           </Toggle>
         )}
+        <Toggle on={deskOpen} onClick={() => setState({ deskOpen: !deskOpen })} title="Desk: every output channel with a level meter" testId="desk-toggle">
+          <Sliders size={16} /> <span className="hidden sm:inline">Desk</span>
+        </Toggle>
         <Toggle on={click} onClick={() => setClick(!click)} title="Click track from the beat grid">
           <Metronome size={16} /> <span className="hidden sm:inline">Click</span>
         </Toggle>

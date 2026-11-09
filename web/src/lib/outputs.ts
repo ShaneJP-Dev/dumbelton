@@ -1,4 +1,4 @@
-import { stereoRouting, type Dest, type Routing } from '../audio/core/types';
+import { stereoRouting, type Dest, type Monitor, type Routing } from '../audio/core/types';
 
 /**
  * Output setup for a multi-channel sound card (e.g. Dante Virtual Soundcard).
@@ -108,11 +108,67 @@ export function buildRouting(setup: OutputSetup, stems: { name: string; output?:
   return routing;
 }
 
+/** One channel strip on the Desk panel (channels are 1-based, as on the desk). */
+export interface DeskChannel {
+  ch: number;
+  label: string;
+  kind: 'click' | 'guide' | 'group' | 'mix';
+  tracks: string[];
+  /** Things the app itself adds (its click, spoken cues). */
+  extras: string[];
+}
+
+/** What each output channel carries, in channel order: the strips of the Desk panel. */
+export function deskChannels(setup: OutputSetup, stems: { name: string; output?: string }[]): DeskChannel[] {
+  if (setup.mode === 'stereo' || setup.groups.length === 0) {
+    const all = stems.map((s) => s.name);
+    return [
+      { ch: 1, label: 'Main L', kind: 'mix', tracks: all, extras: ['Click', 'Spoken cues'] },
+      { ch: 2, label: 'Main R', kind: 'mix', tracks: all, extras: ['Click', 'Spoken cues'] },
+    ];
+  }
+  const byCh = new Map<number, DeskChannel>();
+  const add = (ch: number, label: string, kind: DeskChannel['kind'], tracks: string[], extras: string[]) => {
+    const had = byCh.get(ch);
+    if (had) {
+      // two groups on one channel (the Outputs page warns about it): show both
+      had.label = `${had.label} + ${label}`;
+      had.tracks.push(...tracks);
+      had.extras.push(...extras);
+    } else byCh.set(ch, { ch, label, kind, tracks: [...tracks], extras: [...extras] });
+  };
+  for (const g of setup.groups) {
+    const tracks = stems.filter((s) => groupForStem(setup, s).id === g.id).map((s) => s.name);
+    const kind: DeskChannel['kind'] = g.click ? 'click' : g.id === 'guide' ? 'guide' : 'group';
+    const extras = [...(g.click ? ['App click'] : []), ...(g.id === 'guide' ? ['Spoken cues'] : [])];
+    groupChannels(g).forEach((ch, i) => add(ch, g.stereo ? `${g.name} ${i ? 'R' : 'L'}` : g.name, kind, tracks, extras));
+  }
+  if (setup.mix.enabled) {
+    const inMix = stems.filter((s) => !groupForStem(setup, s).notInMix).map((s) => s.name);
+    add(setup.mix.first, 'Mix L', 'mix', inMix, []);
+    add(setup.mix.first + 1, 'Mix R', 'mix', inMix, []);
+  }
+  return [...byCh.values()].filter((c) => c.ch >= 1 && c.ch <= 32).sort((a, b) => a.ch - b.ch);
+}
+
+/**
+ * What a 2-channel device (a laptop) should play. With a multichannel layout it
+ * would only get channels 1-2 (Click and Guide), so it plays the full mix, or
+ * the channel being listened to on the Desk panel. Never on a real
+ * multichannel device: there, outputs 1-2 are the desk's own channels.
+ */
+export function monitorFor(setup: OutputSetup, deviceChannels: number, listen: number | null): Monitor | null {
+  if (setup.mode !== 'multitrack' || deviceChannels > 2) return null;
+  return listen === null ? { kind: 'mix' } : { kind: 'channel', ch: listen - 1 };
+}
+
 /** Problems to show next to the setup: channels the device lacks, channels used twice. */
 export function channelProblems(setup: OutputSetup, available: number): string[] {
   if (setup.mode === 'stereo') return [];
   if (available <= 2) {
-    return [`This output only has ${available} channel${available === 1 ? '' : 's'}. Choose Dante Virtual Soundcard (or another multi-channel output) above.`];
+    return [
+      `This output only has ${available} channel${available === 1 ? '' : 's'}, so it plays the full mix, and the Desk panel on the song screen shows what each channel gets. At church, choose Dante Virtual Soundcard (or another multi-channel output) above.`,
+    ];
   }
   const out: string[] = [];
   const used = new Map<number, string>();

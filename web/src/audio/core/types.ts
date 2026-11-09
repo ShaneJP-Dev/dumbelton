@@ -74,6 +74,12 @@ export function stereoRouting(stems: number): Routing {
   return { stems: Array.from({ length: stems }, () => [{ l: 0, r: 1 }]), click: [0, 1], cue: [0, 1] };
 }
 
+/**
+ * What a 2-channel device (a laptop) plays when the outputs are laid out for a
+ * multichannel desk: the full stereo mix, or one channel on both sides.
+ */
+export type Monitor = { kind: 'mix' } | { kind: 'channel'; ch: number };
+
 /** Spoken cues in Live ("Chorus" a bar before the chorus). */
 export interface CueParams {
   enabled: boolean;

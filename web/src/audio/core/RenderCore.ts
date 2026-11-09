@@ -1,6 +1,7 @@
 import { readRun } from './StemBlocks';
 import { lowerBound, nextDownbeat, segmentAt } from './grid';
 import {
+  MAX_OUTPUTS,
   RAMP_FRAMES,
   SAMPLE_RATE,
   XFADE_FRAMES,
@@ -8,6 +9,7 @@ import {
   type CoreEvent,
   type CorePosition,
   type CueParams,
+  type Monitor,
   type Frame,
   type Grid,
   type Program,
@@ -147,6 +149,14 @@ export class RenderCore {
   private meterL = 0;
   private meterR = 0;
   private clipped = false;
+  /** Peak of every output channel since the last takeChannelPeaks() (the Desk panel's meters). */
+  private chPeak = new Float32Array(MAX_OUTPUTS);
+  /** Laptop monitor: replaces outputs 1-2 after metering. */
+  private monitor: Monitor | null = null;
+  /** The app click and spoken cues of this block, for the monitor's mix. */
+  private monBus = new Float32Array(0);
+  /** Whether applyMaster ramped this block (its per-frame gains are then in tmpL). */
+  private ramped = false;
   private routing: Routing = stereoRouting(0);
   // test tone (to find a channel on the desk); plays even when stopped
   private toneCh = -1;
@@ -340,6 +350,26 @@ export class RenderCore {
     return this.routing;
   }
 
+  /**
+   * On a 2-channel device with a multichannel layout, play the full stereo mix
+   * (tracks, click and cues) or one channel on outputs 1-2 instead. The meters
+   * still show what every channel, 1 and 2 included, really carries.
+   */
+  setMonitor(m: Monitor | null): void {
+    this.monitor = m ? { ...m } : null;
+  }
+
+  getMonitor(): Monitor | null {
+    return this.monitor;
+  }
+
+  /** Peak level (linear) of each output channel since the last call. Resets. */
+  takeChannelPeaks(): Float32Array {
+    const p = this.chPeak.slice();
+    this.chPeak.fill(0);
+    return p;
+  }
+
   /** A short 1 kHz beep on one output channel (0-based), even when stopped. */
   testTone(channel: number, seconds = 0.6): void {
     this.toneCh = channel;
@@ -500,13 +530,23 @@ export class RenderCore {
       so[0].fill(0, 0, n);
       so[1].fill(0, 0, n);
     }
-    if (this.toneLeft > 0) this.renderTone(outs, n);
+    const tone = this.toneLeft > 0;
+    if (tone) this.renderTone(outs, n);
     const song = this.song;
-    if (!song || this.state === 'stopped') return;
+    if (!song || this.state === 'stopped') {
+      if (tone) this.measureChannels(outs, n); // the Desk panel shows the test tone too
+      return;
+    }
     this.ensureCapacity(n);
 
     if (this.state === 'countIn') {
+      this.monBus.fill(0, 0, n);
+      this.busL.fill(0, 0, n);
+      this.busR.fill(0, 0, n);
+      this.ramped = false;
       this.renderCountIn(outs, n);
+      this.measureChannels(outs, n);
+      this.applyMonitor(outs, n);
       return;
     }
 
@@ -563,6 +603,7 @@ export class RenderCore {
     this.tmpR = new Float32Array(cap);
     this.busL = new Float32Array(cap);
     this.busR = new Float32Array(cap);
+    this.monBus = new Float32Array(cap);
     this.srcPos = new Float64Array(cap);
     this.cap = cap;
   }
@@ -762,6 +803,7 @@ export class RenderCore {
     busL.fill(0, 0, n);
     busR.fill(0, 0, n);
     const mg = this.masterGain;
+    this.monBus.fill(0, 0, n);
     for (let s = 0; s < stems.length; s++) {
       const [bl, br] = this.stemBuf[s];
       if (stemOuts && stemOuts[s]) {
@@ -816,6 +858,47 @@ export class RenderCore {
     this.renderCue(outs, n);
     this.applyMaster(outs, n);
     this.measure(outs, n);
+    this.applyMonitor(outs, n);
+  }
+
+  private measureChannels(outs: Float32Array[], n: number): void {
+    const m = Math.min(outs.length, MAX_OUTPUTS);
+    for (let c = 0; c < m; c++) {
+      const o = outs[c];
+      let pk = 0;
+      for (let i = 0; i < n; i++) {
+        const a = o[i] < 0 ? -o[i] : o[i];
+        if (a > pk) pk = a;
+      }
+      if (pk > this.chPeak[c]) this.chPeak[c] = pk;
+      if (pk > 1) this.clipped = true;
+    }
+  }
+
+  private applyMonitor(outs: Float32Array[], n: number): void {
+    const m = this.monitor;
+    if (!m || outs.length < 2) return;
+    const [o0, o1] = outs;
+    if (m.kind === 'channel') {
+      const src = outs[m.ch];
+      if (!src) {
+        o0.fill(0, 0, n);
+        o1.fill(0, 0, n);
+        return;
+      }
+      const copy = this.tmpR; // free scratch at this point
+      copy.set(src.subarray(0, n));
+      o0.set(copy.subarray(0, n));
+      o1.set(copy.subarray(0, n));
+      return;
+    }
+    // the stereo mix: every track (after faders, mutes and the master) plus the app's click and cues
+    const ramp = this.ramped ? this.tmpL : null;
+    for (let i = 0; i < n; i++) {
+      const g = ramp ? ramp[i] : this.master;
+      o0[i] = (this.busL[i] + this.monBus[i]) * g;
+      o1[i] = (this.busR[i] + this.monBus[i]) * g;
+    }
   }
 
   private measure(outs: Float32Array[], n: number): void {
@@ -832,22 +915,15 @@ export class RenderCore {
     pr *= this.master;
     if (pl > this.meterL) this.meterL = pl;
     if (pr > this.meterR) this.meterR = pr;
-    if (!this.clipped) {
-      for (const o of outs) {
-        for (let i = 0; i < n; i++) {
-          if (o[i] > 1 || o[i] < -1) {
-            this.clipped = true;
-            return;
-          }
-        }
-      }
-    }
+    this.measureChannels(outs, n);
   }
 
   private applyMaster(outs: Float32Array[], n: number): void {
     const target = this.state === 'playing' || this.state === 'draining' ? 1 : 0;
     let m = this.master;
+    this.ramped = false;
     if (m === target && m === 1) return;
+    this.ramped = true;
     const step = 1 / RAMP_FRAMES;
     const ramp = this.tmpL; // reuse scratch: per-frame master gain
     for (let i = 0; i < n; i++) {
@@ -930,6 +1006,7 @@ export class RenderCore {
     const chans = this.routing.cue ?? this.routing.click;
     const g = this.cues.gain;
     const k = Math.min(n, buf.length - this.cueIdx);
+    for (let i = 0; i < k; i++) this.monBus[i] += buf[this.cueIdx + i] * g;
     for (const c of chans) {
       if (c < 0 || c >= outs.length) continue;
       const o = outs[c];
@@ -945,6 +1022,7 @@ export class RenderCore {
   }
 
   private addClickSample(outs: Float32Array[], i: number, v: number): void {
+    this.monBus[i] += v;
     const chans = this.routing.click;
     for (let k = 0; k < chans.length; k++) {
       const c = chans[k];

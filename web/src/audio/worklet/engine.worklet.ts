@@ -108,6 +108,9 @@ class EngineProcessor extends AudioWorkletProcessor {
       case 'routing':
         core.setRouting(m.routing);
         break;
+      case 'monitor':
+        core.setMonitor(m.monitor);
+        break;
       case 'testTone':
         core.testTone(m.channel);
         break;
@@ -136,6 +139,7 @@ class EngineProcessor extends AudioWorkletProcessor {
       songId: this.songId(),
       meter: [m.l, m.r],
       clip: m.clip,
+      chPeaks: this.core.takeChannelPeaks(),
     });
   }
 
