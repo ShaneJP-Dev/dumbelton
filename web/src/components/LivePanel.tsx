@@ -4,6 +4,7 @@ import { lowerBound } from '../audio/core/grid';
 import { releaseWakeLock, requestWakeLock } from '../audio/engine/session';
 import { usePlayheadValue } from '../hooks/usePlayhead';
 import { livePads } from '../lib/arrangement';
+import { keyName, transposedKey } from '../lib/musicKey';
 import { barsIn, KIND_META } from '../lib/sections';
 import type { Project } from '../lib/types';
 import { getEngine } from '../state/engine';
@@ -155,6 +156,7 @@ function LiveSongList({ variant }: { variant: 'sidebar' | 'strip' }) {
                   <span className={cx('block truncate text-xs', isCurrent(r) ? 'text-black/60' : 'text-gray-500')}>
                     {p ? formatTime(p.lengthFrames / SAMPLE_RATE) : ''}
                     {p?.bpm ? ` · ${Math.round(p.bpm)} BPM` : ''}
+                    {p?.key ? ` · ${keyName(transposedKey(p.key, p.transpose ?? 0))}` : ''}
                     {r.arrangement ? ` · ${r.arrangement}` : ''}
                   </span>
                 </span>

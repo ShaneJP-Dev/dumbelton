@@ -63,6 +63,8 @@ export interface AnalysisState {
   progress?: number;
 }
 
+import type { SongKey } from './musicKey';
+
 export interface Project {
   id: string;
   name: string;
@@ -80,6 +82,8 @@ export interface Project {
   masterGain?: number;
   /** Key change in semitones (-6..+6), same tempo. Missing = 0. */
   transpose?: number;
+  /** The song's original key (detected from the audio or set by hand). */
+  key?: SongKey;
 }
 
 export interface SetlistEntry {

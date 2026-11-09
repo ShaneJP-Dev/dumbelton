@@ -3,6 +3,7 @@ import { SAMPLE_RATE } from '../audio/core/types';
 import { patchProjectById, syncGrid, syncProgram, toast } from '../state/actions';
 import { getState } from '../state/store';
 import { guideMessage, guideStems, type GuideResult } from './guide';
+import { detectedKey, keyName } from './musicKey';
 import { sectionsFromAnalysis, type AnalysisSection } from './sections';
 import type { Project, Stem } from './types';
 
@@ -17,6 +18,8 @@ export interface AnalysisResult {
   sectionsFrom?: 'guide' | 'audio';
   /** Present when a guide track was sent. */
   guide?: GuideResult;
+  /** The song's key, estimated from the mix (null if it has no clear pitch). */
+  key?: { tonic: number; mode: 'major' | 'minor'; name: string; confidence: number } | null;
 }
 
 const API = '/api';
@@ -24,6 +27,12 @@ const running = new Set<string>();
 
 export function isAnalyzing(id: string): boolean {
   return running.has(id);
+}
+
+/** The tracks that make up the analysis mix (everything but click and guide). */
+function analysisStems(project: Project): Stem[] {
+  const forMix = project.stems.filter((s) => s.inAnalysisMix);
+  return forMix.length ? forMix : project.stems;
 }
 
 /** Mono WAV of some of a song's tracks (summed, peak-normalised). */
@@ -93,6 +102,8 @@ export function applyAnalysis(p: Project, res: AnalysisResult): Project {
     beats: res.beats.map(toF),
     downbeats: res.downbeats.map(toF),
     sections,
+    // a key chosen by hand is never replaced
+    key: p.key?.source === 'set' ? p.key : (detectedKey(res.key) ?? p.key),
     arrangements: p.arrangements.map((a) => ({
       ...a,
       items: a.items.filter((it) => sections.some((s) => s.id === it.sectionId)),
@@ -113,8 +124,7 @@ export async function analyzeProject(project: Project): Promise<void> {
   const id = project.id;
   try {
     await patchProjectById(id, (p) => ({ ...p, analysis: { status: 'running', progress: 0 } }));
-    const forMix = project.stems.filter((s) => s.inAnalysisMix);
-    const wav = await mixdown(project, forMix.length ? forMix : project.stems);
+    const wav = await mixdown(project, analysisStems(project));
     // the guide track alone, so the analyzer can read its spoken cues ("Verse", "Chorus"…)
     const guide = guideStems(project.stems, getState().outputs);
     const guideWav = guide.length ? await mixdown(project, guide) : null;
@@ -140,3 +150,27 @@ export async function analyzeProject(project: Project): Promise<void> {
     running.delete(id);
   }
 }
+
+/**
+ * Find the key of a song analysed before keys were detected (the sections are
+ * left alone). Returns the key name, or null if the music has no clear key.
+ */
+export async function findKey(project: Project): Promise<string | null> {
+  const wav = await mixdown(project, analysisStems(project));
+  const form = new FormData();
+  form.append('audio', wav, 'mix.wav');
+  let r: Response;
+  try {
+    r = await fetch(`${API}/key`, { method: 'POST', body: form });
+  } catch {
+    throw new AnalyzerUnavailable();
+  }
+  if (r.status === 502 || r.status === 503 || r.status === 504 || r.status === 404) throw new AnalyzerUnavailable();
+  if (!r.ok) throw new Error(`analyzer error ${r.status}`);
+  const key = detectedKey((await r.json()).key);
+  if (!key) return null;
+  await patchProjectById(project.id, (p) => (p.key?.source === 'set' ? p : { ...p, key }));
+  return keyName(key);
+}
+
+export { AnalyzerUnavailable };

@@ -543,23 +543,40 @@ test.describe.serial('song workflow', () => {
     await page.getByTestId('mode-stereo').click();
   });
 
-  test('the key changes in semitones, is saved with the song, and exports keep their length', async () => {
+  test('the key shows as a letter, changes by semitone or by choosing a key, and exports keep their length', async () => {
     type E = { __engine: { transpose: number } };
     await page.goto('/');
     await page.getByTestId('song-card').filter({ hasText: 'E2E Song' }).click();
     await page.waitForURL(/#\/song\//);
     await page.getByRole('button', { name: 'Practice', exact: true }).click();
     const value = page.getByTestId('key-value');
-    await expect(value).toHaveText('0');
+    // the analyzer found the synthetic song's key (it uses Am, F, C and G)
+    await expect(value).toHaveText(/^(C|Am)$/);
+    // correct it by hand to G
+    await page.getByTestId('key-name').click();
+    await page.getByTestId('original-key').selectOption({ label: 'G' });
+    await expect(value).toHaveText('G');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('key-menu')).toHaveCount(0);
     await page.getByTestId('key-up').click();
     await page.getByTestId('key-up').click();
-    await expect(value).toHaveText('+2');
+    await expect(value).toHaveText('A');
     expect(await page.evaluate(() => (window as unknown as E).__engine.transpose)).toBe(2);
-    await expect.poll(async () => ((await project(page, 'E2E Song')) as unknown as { transpose?: number }).transpose).toBe(2);
+    // choose the key to play in: G -> D is 5 down
+    await page.getByTestId('key-name').click();
+    await expect(page.locator('[data-testid=play-in][data-key="A"]')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('[data-testid=play-in][data-key="D"]').click();
+    await expect(value).toHaveText('D');
+    expect(await page.evaluate(() => (window as unknown as E).__engine.transpose)).toBe(-5);
+    await expect.poll(async () => ((await project(page, 'E2E Song')) as unknown as { transpose?: number; key?: { tonic: number; source: string } }).key).toEqual({
+      tonic: 7,
+      minor: false,
+      source: 'set',
+    });
     // it comes back with the song
     await page.reload();
-    await expect(value).toHaveText('+2');
-    await expect.poll(() => page.evaluate(() => (window as unknown as { __engine?: E['__engine'] }).__engine?.transpose)).toBe(2);
+    await expect(value).toHaveText('D');
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __engine?: E['__engine'] }).__engine?.transpose)).toBe(-5);
 
     // an export in the new key has the same length as the arrangement
     await page.getByRole('button', { name: 'Arrange', exact: true }).click();
@@ -567,7 +584,7 @@ test.describe.serial('song workflow', () => {
     const chorus = p.sections.find((x) => x.name === 'Chorus 1')!;
     await expect(page.getByTestId('arr-item')).toHaveCount(2); // Chorus 1, Chorus 1 (from the export test)
     await page.getByTestId('export').click();
-    await expect(page.getByText('In the new key (+2 semitones)')).toBeVisible();
+    await expect(page.getByText('In D (−5 semitones)')).toBeVisible();
     await page.getByTestId('export-run').click();
     await expect(page.getByTestId('save-file')).toBeVisible({ timeout: 60_000 });
     const frames = await page.evaluate(async () => {
@@ -579,9 +596,11 @@ test.describe.serial('song workflow', () => {
     expect(frames).toBe(2 * (chorus.end - chorus.start));
     await page.getByRole('button', { name: 'Done' }).click();
 
-    await page.getByTestId('key-down').click();
-    await page.getByTestId('key-down').click();
-    await expect(value).toHaveText('0');
+    // back to the original key
+    await page.getByTestId('key-name').click();
+    await page.locator('[data-testid=play-in][data-key="G"]').click();
+    await expect(value).toHaveText('G');
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Practice', exact: true }).click();
   });
 });
@@ -617,6 +636,15 @@ test('without the analyzer, sections can be marked by hand and added anywhere', 
   const box = (await last.boundingBox())!;
   await last.dblclick({ position: { x: box.width / 2, y: box.height / 2 } });
   await expect(page.getByTestId('section')).toHaveCount(4);
+
+  // with no key yet the key shows in semitones; "Find the key" asks the analyzer for it alone
+  await expect(page.getByTestId('key-value')).toHaveText('0');
+  await page.route('**/api/key', (route) => route.fulfill({ json: { key: { tonic: 2, mode: 'major', name: 'D', confidence: 0.2 } } }));
+  await page.getByTestId('key-name').click();
+  await page.getByTestId('find-key').click();
+  await expect(page.getByTestId('key-value')).toHaveText('D');
+  await expect(page.getByRole('status')).toContainText('This song is in D');
+  await expect(page.locator('[data-testid=play-in][data-key="D"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('a guide track is sent with the mix, and its spoken cues place the sections', async ({ page }, testInfo) => {

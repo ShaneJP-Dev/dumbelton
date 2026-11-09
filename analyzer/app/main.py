@@ -4,6 +4,7 @@ POST /api/jobs        multipart field `audio` (the mix), optional `guide`
                       (the guide track alone: its spoken cues place sections) -> {"id": ...}
 GET  /api/jobs/{id}   -> {"id", "status", "progress", "result"?, "error"?}
 GET  /api/health      -> {"ok": true, "backend": ..., "speech": {"en": bool, "es": bool}}
+POST /api/key         multipart field `audio` -> {"key": {"tonic", "mode", "name", "confidence"} | null}
 GET  /api/voice/{lang} -> {"available", "voice"?, "message"?, "kinds"}: spoken cue words
                       made with the computer's voice (see voice.py)
 GET  /api/voice/{lang}/{kind}.wav -> one cue word, 48 kHz mono WAV
@@ -29,6 +30,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .jobs import JobManager
+from .key import detect_key
 from .pipeline import analyze_file, backend_name, get_backend
 from . import voice
 from .speech import models_status
@@ -114,6 +116,24 @@ async def create_job(audio: UploadFile = File(...), guide: UploadFile | None = F
         raise
     job = jobs.submit(path, guide_path)
     return {"id": job.id}
+
+
+@app.post("/api/key")
+async def find_key(audio: UploadFile = File(...)) -> dict:
+    """The key of a mix (for songs analysed before keys were detected)."""
+    path = await _save_upload(audio, "key-")
+    if path is None:
+        raise HTTPException(400, "empty audio upload")
+    try:
+        from starlette.concurrency import run_in_threadpool
+
+        try:
+            key = await run_in_threadpool(detect_key, path)
+        except ValueError:
+            key = None
+    finally:
+        os.unlink(path)
+    return {"key": key}
 
 
 @app.get("/api/jobs/{job_id}")

@@ -1,6 +1,7 @@
 import { db } from '../lib/db';
 import { arrangementProgram, liveProgram, songProgram } from '../lib/arrangement';
 import { deleteProjectData } from '../lib/importer';
+import type { SongKey } from '../lib/musicKey';
 import type { Project, Section, Setlist } from '../lib/types';
 import { addSectionAt, snapFrame } from '../lib/sections';
 import { fadeFrames, saveFade, type FadeBeats } from '../lib/fade';
@@ -386,6 +387,11 @@ export async function togglePlay(): Promise<void> {
 export function setSpeed(speed: number): void {
   setState({ speed });
   peekEngine()?.setSpeed(speed);
+}
+
+/** Set (or clear) the current song's original key by hand. */
+export function setOriginalKey(key: SongKey | undefined): void {
+  patchProject((p) => ({ ...p, key }));
 }
 
 /** Change the current song's key by semitones (-6..+6), saved with the song. */

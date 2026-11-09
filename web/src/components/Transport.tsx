@@ -4,8 +4,8 @@ import { usePlayheadValue } from '../hooks/usePlayhead';
 import { displayFrame, type Layout } from '../lib/layout';
 import type { Project } from '../lib/types';
 import { peekEngine } from '../state/engine';
-import { keyLabel, keyShort } from '../lib/keyChange';
-import { setClick, setSpeed, setTranspose, syncProgram, togglePlay } from '../state/actions';
+import { setClick, setSpeed, syncProgram, togglePlay } from '../state/actions';
+import { KeyControl } from './KeyControl';
 import { setState, useApp } from '../state/store';
 import { Loop, Metronome, Pause, Play } from './icons';
 import { MasterSection } from './MasterSection';
@@ -53,7 +53,6 @@ export function Transport({ project, layout }: { project: Project; layout?: Layo
   const loop = useApp((s) => s.loop);
   const selected = useApp((s) => s.selected);
   const bpm = project.bpm ? Math.round(project.bpm * speed) : null;
-  const key = project.transpose ?? 0;
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-[#0f1219] px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:gap-3 md:px-4">
@@ -109,37 +108,7 @@ export function Transport({ project, layout }: { project: Project; layout?: Layo
             ))}
           </select>
         </label>
-        <div
-          className="flex items-center rounded-lg bg-white/10 text-sm"
-          role="group"
-          aria-label="Key"
-          title={`Key: ${keyLabel(key)} (same tempo). Saved with the song.`}
-        >
-          <span className="pl-2 pr-1 text-gray-400">Key</span>
-          <button
-            type="button"
-            data-testid="key-down"
-            aria-label="Key down a semitone"
-            disabled={key <= -6}
-            onClick={() => setTranspose(key - 1)}
-            className="h-10 w-8 rounded-md text-lg leading-none text-gray-200 hover:bg-white/10 disabled:opacity-30"
-          >
-            −
-          </button>
-          <span data-testid="key-value" className={cx('w-6 text-center font-medium tabular-nums', key !== 0 && 'text-amber-300')}>
-            {keyShort(key)}
-          </span>
-          <button
-            type="button"
-            data-testid="key-up"
-            aria-label="Key up a semitone"
-            disabled={key >= 6}
-            onClick={() => setTranspose(key + 1)}
-            className="h-10 w-8 rounded-md text-lg leading-none text-gray-200 hover:bg-white/10 disabled:opacity-30"
-          >
-            +
-          </button>
-        </div>
+        <KeyControl project={project} />
       </div>
     </div>
   );

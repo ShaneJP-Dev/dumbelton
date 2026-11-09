@@ -65,6 +65,8 @@ def test_synthetic_song_structure(mix, synthetic_song, browser_mix, truth):
         # within a quarter of a bar: boundaries must land on the right downbeat
         assert abs(g["start"] - w["start"]) <= truth["bar"] / 4, (g, w)
     assert [s["name"] for s in got][:3] == ["Intro", "Verse 1", "Chorus 1"]
+    # the synthetic song uses Am, F, C, G: C major or its relative A minor
+    assert res["key"]["name"] in ("C", "Am")
     # boundaries sit exactly on reported downbeats
     for s in got[1:]:
         assert s["start"] in res["downbeats"]

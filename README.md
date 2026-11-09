@@ -197,13 +197,20 @@ and play, and you can mark sections by hand.
 
 ### Changing the key
 
-The **Key** buttons in the bottom bar move the whole song up or down a semitone at a time (up to 6
-either way) at the same tempo, in Practice, Arrange and Live. The key is saved with the song, so a
-setlist plays every song in the key you chose. Exports use it too (there's a checkbox to export in
-the original key instead). The click and spoken cues are not affected.
+The bottom bar shows the song's key as a letter: **Key G**. The − and + buttons move it a semitone at a
+time (up to 6 either way) at the same tempo, and it then shows e.g. **Key A +2**. Tap the key name to
+choose the key to play in directly (the dot marks the original), or to correct the original key.
 
-Small changes (1–2 semitones) sound the most natural. It works the same way as slowing down: short
-slices of audio are lined up across all tracks at once, so the tracks stay together.
+- **Where the key comes from:** the analyzer guesses it from the audio when a song is analysed. The
+  usual mistake is a closely related key (such as the relative minor), so check it once and correct it
+  if needed; a key you choose is never replaced. Songs analysed before this feature show semitones
+  until you tap the key and choose **Find the key from the audio** (the sections are left alone) or
+  pick it by hand.
+- The key you play in is saved with the song, so a setlist plays every song in the key you chose (the
+  Live song list shows it). Exports use it too (there's a checkbox to export in the original key
+  instead). The click and spoken cues are not affected.
+- Small changes (1–2 semitones) sound the most natural. It works the same way as slowing down: short
+  slices of audio are lined up across all tracks at once, so the tracks stay together.
 
 ### Repeat (vamp) in Live
 
@@ -309,6 +316,7 @@ analyzer/                  FastAPI service: POST /api/jobs, GET /api/jobs/{id}
   app/postprocess.py       onset-refined downbeats, snapping to bars, numbering ("Verse 2")
   app/speech.py            guide track -> words with Vosk (grammar limited to cue words), model download
   app/voice.py             spoken cue words with the computer's voice (Windows / macOS / espeak)
+  app/key.py               the song's key from the mix (chroma + Krumhansl-Kessler profiles)
   app/cues.py              words -> cues -> sections on downbeats
 scripts/make_test_song.py  synthetic multitrack song with a known structure (used by tests)
 ```

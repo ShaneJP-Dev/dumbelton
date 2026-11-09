@@ -8,6 +8,7 @@ from typing import Callable
 import librosa
 import numpy as np
 
+from .key import detect_key
 from .postprocess import postprocess
 from .speech import read_guide
 from .types import RawAnalysis
@@ -58,6 +59,10 @@ def analyze_file(
     report(0.95)
     cues = guide["cues"] if guide and guide["status"] == "ok" else None
     result = postprocess(raw, onsets, cues)
+    try:
+        result["key"] = detect_key(path)
+    except Exception:  # noqa: BLE001 - a song with no clear pitch still gets its sections
+        result["key"] = None
     if guide is not None:
         if guide["status"] == "ok" and result["sectionsFrom"] != "guide":
             guide["status"] = "few-cues"

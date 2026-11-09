@@ -16,6 +16,7 @@ import { arrangementLength, arrangementProgram, newArrangement, playableItems } 
 import { exportProgram, saveFile, type ExportedFile } from '../lib/exporter';
 import { fadeFrames } from '../lib/fade';
 import { keyLabel } from '../lib/keyChange';
+import { keyName, transposedKey } from '../lib/musicKey';
 import { uid } from '../lib/ids';
 import { barsIn, KIND_META } from '../lib/sections';
 import type { Arrangement, ArrangementItem, Project, Section } from '../lib/types';
@@ -141,7 +142,13 @@ function ExportDialog({ open, onClose, project, arr }: { open: boolean; onClose:
           <Check on={mix} set={setMix} label="Mixed song (WAV)" hint="All tracks with your volume, mute and solo settings" />
           <Check on={stems} set={setStems} label="Separate tracks (ZIP of WAVs)" hint="One file per track, rearranged the same way" />
           {speed !== 1 && <Check on={useSpeed} set={setUseSpeed} label={`At ${Math.round(speed * 100)}% speed`} />}
-          {key !== 0 && <Check on={useKey} set={setUseKey} label={`In the new key (${keyLabel(key)})`} />}
+          {key !== 0 && (
+            <Check
+              on={useKey}
+              set={setUseKey}
+              label={project.key ? `In ${keyName(transposedKey(project.key, key))} (${keyLabel(key)})` : `In the new key (${keyLabel(key)})`}
+            />
+          )}
           {project.beats.length > 0 && <Check on={click} set={setClickOpt} label="Include the click in the mix" />}
           <div className="mt-4 flex items-center justify-end gap-2">
             {busy && (
