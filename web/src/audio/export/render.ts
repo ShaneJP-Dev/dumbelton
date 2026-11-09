@@ -39,7 +39,9 @@ export function renderProgram(
     core.play();
     let done = 0;
     let lastReport = 0;
-    while (!ended && done < exact && done < cap) {
+    // at 100% the file is exactly the program's length (padded with silence if a key change ends a touch early)
+    while (done < exact && done < cap) {
+      if (ended && exact === Infinity) break;
       let n = Math.min(block, exact - done);
       core.render(main, n, stemOuts);
       if (ended && exact === Infinity) {

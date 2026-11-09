@@ -78,6 +78,8 @@ export interface Project {
   analysis: AnalysisState;
   /** Master level for the whole song (linear, 1 = 0 dB). Missing = 0 dB. */
   masterGain?: number;
+  /** Key change in semitones (-6..+6), same tempo. Missing = 0. */
+  transpose?: number;
 }
 
 export interface SetlistEntry {

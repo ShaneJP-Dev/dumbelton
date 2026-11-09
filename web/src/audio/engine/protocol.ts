@@ -21,6 +21,7 @@ export type ToWorklet =
   | { type: 'stem'; index: number; params: Partial<StemParams> }
   | { type: 'click'; params: Partial<ClickParams> }
   | { type: 'speed'; speed: number }
+  | { type: 'transpose'; semitones: number }
   | { type: 'transition'; frames: number }
   | { type: 'repeat'; on: boolean }
   | { type: 'cueClips'; clips: Float32Array[] }

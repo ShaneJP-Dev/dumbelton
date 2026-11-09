@@ -149,6 +149,13 @@ export class AudioEngine {
     Object.assign(this.clickParams, params);
     this.send({ type: 'click', params });
   }
+  /** Last key change sent to the audio thread, in semitones (for tests). */
+  transpose = 0;
+  /** Change the key without changing the tempo (-6..+6 semitones). */
+  setTranspose(semitones: number): void {
+    this.transpose = semitones;
+    this.send({ type: 'transpose', semitones });
+  }
   setSpeed(speed: number): void {
     this.send({ type: 'speed', speed });
   }

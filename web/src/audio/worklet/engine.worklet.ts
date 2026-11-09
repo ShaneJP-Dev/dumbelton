@@ -90,6 +90,9 @@ class EngineProcessor extends AudioWorkletProcessor {
       case 'speed':
         core.setSpeed(m.speed);
         break;
+      case 'transpose':
+        core.setTranspose(m.semitones);
+        break;
       case 'transition':
         core.setTransition(m.frames);
         break;

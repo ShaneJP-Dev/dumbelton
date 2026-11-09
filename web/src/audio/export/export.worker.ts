@@ -40,6 +40,8 @@ export interface ExportRequest {
   grid: Grid;
   program: Program;
   speed: number;
+  /** Key change in semitones. */
+  transpose: number;
   /** Fade length (frames) at arrangement joins, as in playback. */
   transition: number;
   /** The song's master level (linear) for the mix. */
@@ -112,6 +114,7 @@ scope.onmessage = async (e: MessageEvent<ExportRequest>) => {
     core.setClick({ enabled: req.click });
     core.setStretcher(new LinkedWsola(SAMPLE_RATE));
     core.setSpeed(req.speed);
+    core.setTranspose(req.transpose);
     core.setTransition(req.transition);
     core.setMasterGain(req.masterGain);
 

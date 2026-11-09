@@ -15,6 +15,7 @@ import { SAMPLE_RATE } from '../audio/core/types';
 import { arrangementLength, arrangementProgram, newArrangement, playableItems } from '../lib/arrangement';
 import { exportProgram, saveFile, type ExportedFile } from '../lib/exporter';
 import { fadeFrames } from '../lib/fade';
+import { keyLabel } from '../lib/keyChange';
 import { uid } from '../lib/ids';
 import { barsIn, KIND_META } from '../lib/sections';
 import type { Arrangement, ArrangementItem, Project, Section } from '../lib/types';
@@ -90,6 +91,8 @@ function ExportDialog({ open, onClose, project, arr }: { open: boolean; onClose:
   const [mix, setMix] = useState(true);
   const [stems, setStems] = useState(false);
   const [useSpeed, setUseSpeed] = useState(false);
+  const [useKey, setUseKey] = useState(true);
+  const key = project.transpose ?? 0;
   const [click, setClickOpt] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [files, setFiles] = useState<ExportedFile[]>([]);
@@ -109,7 +112,7 @@ function ExportDialog({ open, onClose, project, arr }: { open: boolean; onClose:
         project,
         program,
         `${project.name} - ${arr.name}`,
-        { mix, stemFiles: stems, speed: useSpeed ? speed : 1, click, transition: fadeFrames(project, fade) },
+        { mix, stemFiles: stems, speed: useSpeed ? speed : 1, transpose: useKey ? key : 0, click, transition: fadeFrames(project, fade) },
         (f, stage) => setBusy(stage === 'zip' ? `Packing tracks… ${Math.round(f * 100)}%` : `Rendering… ${Math.round(f * 100)}%`),
       );
       setFiles(res.files);
@@ -138,6 +141,7 @@ function ExportDialog({ open, onClose, project, arr }: { open: boolean; onClose:
           <Check on={mix} set={setMix} label="Mixed song (WAV)" hint="All tracks with your volume, mute and solo settings" />
           <Check on={stems} set={setStems} label="Separate tracks (ZIP of WAVs)" hint="One file per track, rearranged the same way" />
           {speed !== 1 && <Check on={useSpeed} set={setUseSpeed} label={`At ${Math.round(speed * 100)}% speed`} />}
+          {key !== 0 && <Check on={useKey} set={setUseKey} label={`In the new key (${keyLabel(key)})`} />}
           {project.beats.length > 0 && <Check on={click} set={setClickOpt} label="Include the click in the mix" />}
           <div className="mt-4 flex items-center justify-end gap-2">
             {busy && (

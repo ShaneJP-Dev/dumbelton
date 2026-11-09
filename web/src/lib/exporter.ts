@@ -6,6 +6,8 @@ export interface ExportOptions {
   mix: boolean;
   stemFiles: boolean;
   speed: number;
+  /** Key change in semitones. */
+  transpose: number;
   click: boolean;
   /** Fade length (frames) at arrangement joins. */
   transition: number;

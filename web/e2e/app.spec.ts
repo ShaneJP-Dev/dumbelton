@@ -542,6 +542,48 @@ test.describe.serial('song workflow', () => {
     await page.goto('/#/outputs');
     await page.getByTestId('mode-stereo').click();
   });
+
+  test('the key changes in semitones, is saved with the song, and exports keep their length', async () => {
+    type E = { __engine: { transpose: number } };
+    await page.goto('/');
+    await page.getByTestId('song-card').filter({ hasText: 'E2E Song' }).click();
+    await page.waitForURL(/#\/song\//);
+    await page.getByRole('button', { name: 'Practice', exact: true }).click();
+    const value = page.getByTestId('key-value');
+    await expect(value).toHaveText('0');
+    await page.getByTestId('key-up').click();
+    await page.getByTestId('key-up').click();
+    await expect(value).toHaveText('+2');
+    expect(await page.evaluate(() => (window as unknown as E).__engine.transpose)).toBe(2);
+    await expect.poll(async () => ((await project(page, 'E2E Song')) as unknown as { transpose?: number }).transpose).toBe(2);
+    // it comes back with the song
+    await page.reload();
+    await expect(value).toHaveText('+2');
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __engine?: E['__engine'] }).__engine?.transpose)).toBe(2);
+
+    // an export in the new key has the same length as the arrangement
+    await page.getByRole('button', { name: 'Arrange', exact: true }).click();
+    const p = await project(page, 'E2E Song');
+    const chorus = p.sections.find((x) => x.name === 'Chorus 1')!;
+    await expect(page.getByTestId('arr-item')).toHaveCount(2); // Chorus 1, Chorus 1 (from the export test)
+    await page.getByTestId('export').click();
+    await expect(page.getByText('In the new key (+2 semitones)')).toBeVisible();
+    await page.getByTestId('export-run').click();
+    await expect(page.getByTestId('save-file')).toBeVisible({ timeout: 60_000 });
+    const frames = await page.evaluate(async () => {
+      const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('exports');
+      const f = await (await dir.getFileHandle('mix.wav')).getFile();
+      const v = new DataView(await f.slice(0, 44).arrayBuffer());
+      return v.getUint32(40, true) / (v.getUint16(22, true) * (v.getUint16(34, true) / 8));
+    });
+    expect(frames).toBe(2 * (chorus.end - chorus.start));
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    await page.getByTestId('key-down').click();
+    await page.getByTestId('key-down').click();
+    await expect(value).toHaveText('0');
+    await page.getByRole('button', { name: 'Practice', exact: true }).click();
+  });
 });
 
 test('without the analyzer, sections can be marked by hand and added anywhere', async ({ page }) => {

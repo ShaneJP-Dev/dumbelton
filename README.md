@@ -5,7 +5,8 @@ A simpler take on Ableton for bands, worship teams and anyone learning songs. Up
 bridge and outro, as coloured blocks above the tracks. Then:
 
 - **Practice**: tap a section to jump to it, loop it, slow it down (50–100%) without changing the pitch,
-  mute or solo tracks, set each track's volume in dB, and add a click track and a one-bar count-in.
+  change the key (up to 6 semitones up or down) without changing the tempo, mute or solo tracks, set
+  each track's volume in dB, and add a click track and a one-bar count-in.
 - **Arrange**: build a new order (say an extra chorus at the end) by tapping and dragging sections, play
   it seamlessly, and export it as a WAV mix or a ZIP of per-track WAVs.
 - **Live**: big pads for each section. Tap one and it starts at the end of the current section, or at
@@ -194,6 +195,16 @@ analyzer missed, press **A** while the song plays, double-click the section bar,
 The new section starts at that point, on the nearest bar. If the analyzer is not running, songs still import
 and play, and you can mark sections by hand.
 
+### Changing the key
+
+The **Key** buttons in the bottom bar move the whole song up or down a semitone at a time (up to 6
+either way) at the same tempo, in Practice, Arrange and Live. The key is saved with the song, so a
+setlist plays every song in the key you chose. Exports use it too (there's a checkbox to export in
+the original key instead). The click and spoken cues are not affected.
+
+Small changes (1–2 semitones) sound the most natural. It works the same way as slowing down: short
+slices of audio are lined up across all tracks at once, so the tracks stay together.
+
 ### Repeat (vamp) in Live
 
 Tap **Repeat** (or press R) and the section that's playing starts again from its top when it ends,
@@ -270,6 +281,7 @@ web/                       React + TypeScript (Vite)
   src/audio/core/          RenderCore: the whole playback engine, no DOM (unit-tested)
     RenderCore.ts          one read position for all stems; programs, crossfades, queued jumps, click
     LinkedWsola.ts         time-stretch with identical splice points for every stem
+    Resampler.ts           linked resampler: with the stretcher, changes the key at the same tempo
   src/audio/worklet/       AudioWorklet wrapping RenderCore
   src/audio/engine/        main-thread API, playhead clock, iOS audio session
   src/audio/import/        decode -> 48 kHz Int16 blocks in OPFS, waveform peaks, analysis mixdown
@@ -314,7 +326,7 @@ pnpm e2e
 
 runs the end-to-end tests (Playwright, Chromium). They start both servers and drive the app with a
 synthetic song: import, section detection, seek, loop, mute, arrangement export length, a Live
-quantised jump, Repeat, spoken cues on the Guide channel, Live track, group and mute-all mutes, sending a guide track, working without the
+quantised jump, Repeat, spoken cues on the Guide channel, key change and export length, Live track, group and mute-all mutes, sending a guide track, working without the
 analyzer, and importing a folder of `.m4a` stems with their Ableton `.asd` files (that test needs ffmpeg
 to create the m4a files, and is skipped without it).
 

@@ -194,6 +194,7 @@ export async function openProject(id: string, opts: { keepMode?: boolean } = {})
     applyClick(engine);
     engine.setRepeat(getState().mode === 'live' && getState().liveRepeat);
     engine.setSpeed(getState().speed);
+    engine.setTranspose(p.transpose ?? 0);
     syncTransition();
     syncRouting();
     syncProgram();
@@ -376,6 +377,13 @@ export async function togglePlay(): Promise<void> {
 export function setSpeed(speed: number): void {
   setState({ speed });
   peekEngine()?.setSpeed(speed);
+}
+
+/** Change the current song's key by semitones (-6..+6), saved with the song. */
+export function setTranspose(semitones: number): void {
+  const t = Math.max(-6, Math.min(6, Math.round(semitones)));
+  patchProject((p) => ({ ...p, transpose: t }));
+  peekEngine()?.setTranspose(t);
 }
 
 export function setClick(on: boolean): void {

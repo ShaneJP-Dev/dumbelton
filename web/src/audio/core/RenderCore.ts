@@ -17,6 +17,7 @@ import {
   type StemParams,
 } from './types';
 import type { Stretcher } from './LinkedWsola';
+import { LinkedResampler } from './Resampler';
 
 /**
  * The whole playback engine, with no DOM or Web Audio dependency.
@@ -34,7 +35,8 @@ import type { Stretcher } from './LinkedWsola';
  *                (stereo pairs or single channels), click, play/pause ramp.
  */
 
-type State = 'stopped' | 'playing' | 'stopping' | 'countIn';
+/** 'draining': the program has ended but the stretcher still holds audio to play out. */
+type State = 'stopped' | 'playing' | 'stopping' | 'countIn' | 'draining';
 type TriggerKind = 'none' | 'pending' | 'contig' | 'xfade' | 'end';
 
 interface Xfade {
@@ -107,6 +109,12 @@ export class RenderCore {
 
   private stretcher: Stretcher | null = null;
   private speed = 1;
+  /** Key change in semitones; the pitch ratio is 2^(semitones/12). */
+  private transpose = 0;
+  private ratio = 1;
+  private resampler = new LinkedResampler();
+  private readonly pullStretched = (m: number, out: Float32Array[][], pos: Float64Array) =>
+    this.stretcher!.process(m, out, pos, this.speed / this.ratio, this.pull);
   /** Crossfade length for jumps and arrangement joins (frames); XFADE_FRAMES = a clean cut. */
   private transition = XFADE_FRAMES;
   /** Live "Repeat" (vamp): the current segment loops until a queued jump lands. */
@@ -151,6 +159,9 @@ export class RenderCore {
   private nextBeat = 0;
   private lastSrc = -2;
 
+  /** While draining: the program's last source frame, and a safety limit in output frames. */
+  private drainEnd = 0;
+  private drainLeft = 0;
   private countInLeft = 0;
   private countInBeats: number[] = [];
   private countInBeatIdx = 0;
@@ -190,6 +201,7 @@ export class RenderCore {
       : { segments: [], loop: false };
     this.repeat = false;
     this.stretcher?.reset();
+    this.resampler.reset();
     this.computeTrigger();
   }
 
@@ -205,6 +217,7 @@ export class RenderCore {
   setStretcher(stretcher: Stretcher | null): void {
     this.stretcher = stretcher;
     stretcher?.reset();
+    this.resampler.reset();
   }
 
   setSpeed(speed: number): void {
@@ -212,6 +225,24 @@ export class RenderCore {
     if (s === this.speed) return;
     this.speed = s;
     this.stretcher?.reset();
+    this.resampler.reset();
+  }
+
+  /**
+   * Change the key by whole semitones (-6..+6) without changing the tempo:
+   * stretch by the pitch ratio, then resample back. Needs a stretcher.
+   */
+  setTranspose(semitones: number): void {
+    const t = Math.max(-6, Math.min(6, Math.round(semitones)));
+    if (t === this.transpose) return;
+    this.transpose = t;
+    this.ratio = 2 ** (t / 12);
+    this.stretcher?.reset();
+    this.resampler.reset();
+  }
+
+  getTranspose(): number {
+    return this.transpose;
   }
 
   getSpeed(): number {
@@ -372,7 +403,7 @@ export class RenderCore {
   pause(): void {
     this.cueBuf = null;
     this.duck = false;
-    if (this.state === 'playing') this.state = 'stopping';
+    if (this.state === 'playing' || this.state === 'draining') this.state = 'stopping';
     if (this.state === 'countIn') {
       this.state = 'stopped';
       this.master = 0;
@@ -382,7 +413,7 @@ export class RenderCore {
   }
 
   isPlaying(): boolean {
-    return this.state === 'playing' || this.state === 'countIn';
+    return this.state === 'playing' || this.state === 'countIn' || this.state === 'draining';
   }
 
   /** Move to a source frame (in segment `segIndex`, or the one containing the frame). */
@@ -400,6 +431,7 @@ export class RenderCore {
     this.seg = segs.indexOf(s);
     this.pos = f;
     this.stretcher?.reset();
+    this.resampler.reset();
     this.resyncClick();
     this.computeTrigger();
   }
@@ -480,14 +512,36 @@ export class RenderCore {
 
     if (this.state === 'playing') this.updateCue();
     const st = this.stretcher;
-    this.stretching = st !== null && (this.speed !== 1 || st.buffered() > 0);
-    if (this.stretching) {
+    const shifting = st !== null && this.ratio !== 1;
+    this.stretching = st !== null && (this.speed !== 1 || shifting || st.buffered() > 0);
+    if (shifting) {
+      this.resampler.process(n, this.stemBuf, this.srcPos, this.ratio, this.pullStretched);
+    } else if (this.stretching) {
       st!.process(n, this.stemBuf, this.srcPos, this.speed, this.pull);
     } else {
       this.fill(n, this.stemBuf, this.srcPos, 0);
     }
     this.lastOut = this.srcPos[n - 1];
     this.mix(outs, stemOuts, n);
+    if (this.state === 'draining') {
+      this.drainLeft -= n;
+      // ended once the music's last frame has been heard and the stretcher has nothing but silence left
+      if ((this.lastOut >= this.drainEnd - 1 && this.blockIsSilent(n)) || this.drainLeft <= 0) this.finish();
+    }
+  }
+
+  private blockIsSilent(n: number): boolean {
+    for (const [l, r] of this.stemBuf) for (let i = 0; i < n; i++) if (l[i] !== 0 || r[i] !== 0) return false;
+    return true;
+  }
+
+  /** The program has been played to its end. */
+  private finish(): void {
+    this.state = 'stopped';
+    this.master = 0;
+    this.stretcher?.reset();
+    this.resampler.reset();
+    this.emit({ type: 'ended' });
   }
 
   // ---------------------------------------------------------------- internals
@@ -618,7 +672,7 @@ export class RenderCore {
     const end = off + n;
     let guard = 0;
     while (i < end) {
-      if (this.state === 'stopped') {
+      if (this.state === 'stopped' || this.state === 'draining') {
         for (const b of bufs) {
           b[0].fill(0, i, end);
           b[1].fill(0, i, end);
@@ -659,9 +713,16 @@ export class RenderCore {
           if (xf.toSilence) {
             const cur = this.program.segments[this.seg];
             this.pos = cur.end;
-            this.state = 'stopped';
-            this.master = 0;
-            this.emit({ type: 'ended' });
+            if (this.stretching && this.stretcher) {
+              // the stretcher (and key-change resampler) still hold the last moments: play them out
+              this.state = 'draining';
+              this.drainEnd = cur.end;
+              this.drainLeft = 2 * this.sampleRate;
+            } else {
+              this.state = 'stopped';
+              this.master = 0;
+              this.emit({ type: 'ended' });
+            }
           }
         }
         continue;
@@ -784,7 +845,7 @@ export class RenderCore {
   }
 
   private applyMaster(outs: Float32Array[], n: number): void {
-    const target = this.state === 'playing' ? 1 : 0;
+    const target = this.state === 'playing' || this.state === 'draining' ? 1 : 0;
     let m = this.master;
     if (m === target && m === 1) return;
     const step = 1 / RAMP_FRAMES;
@@ -804,6 +865,7 @@ export class RenderCore {
         this.pos = Math.round(this.lastOut) + 1;
         this.seg = segmentAt(segs, this.pos);
         this.stretcher.reset();
+        this.resampler.reset();
         this.stretching = false;
         this.resyncClick();
         this.computeTrigger();
@@ -848,8 +910,8 @@ export class RenderCore {
     const u = this.upcoming();
     if (!u) return;
     const bar = this.barAt(u.at);
-    // what is being heard: the stretcher reads ahead of its output
-    const here = this.pos - (this.stretching && this.stretcher ? this.stretcher.buffered() : 0);
+    // what is being heard: the stretcher (and the key-change resampler) read ahead of their output
+    const here = this.stretching && this.stretcher ? this.pos - this.stretcher.buffered() - this.resampler.buffered() : this.pos;
     if (here < u.at - bar || here >= u.at) return;
     if (u.jump) this.duck = true;
     const clip = c.segClip[u.target] ?? -1;
